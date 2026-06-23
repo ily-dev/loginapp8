@@ -69,7 +69,10 @@ android {
 }
 
 dependencies {
-    
+    api(project(":core:terminal-view"))
+    api(project(":core:terminal-emulator"))
+    api(project(":core:resources"))
+    api(project(":core:components"))
 
     api(libs.appcompat)
     api(libs.material)
@@ -87,8 +90,7 @@ dependencies {
     api(libs.ui.graphics)
     api(libs.material3)
     api(libs.navigation.compose)
-    api(project(":core:terminal-view"))
-    api(project(":core:terminal-emulator"))
+    
     api(libs.utilcode)
     //api(libs.commons.net)
     api(libs.okhttp)
@@ -99,8 +101,6 @@ dependencies {
     api(libs.androidx.palette)
     api(libs.accompanist.systemuicontroller)
 //    api(libs.termux.shared)
-
-    api(project(":core:resources"))
-    api(project(":core:components"))
+    
 }
 

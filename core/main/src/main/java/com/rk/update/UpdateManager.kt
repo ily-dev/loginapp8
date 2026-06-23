@@ -6,6 +6,7 @@ import com.rk.libcommons.createFileIfNot
 import com.rk.libcommons.localBinDir
 import com.rk.terminal.ui.activities.terminal.MainActivity
 import java.io.File
+import com.rk.terminal.Globals
 
 // ============================================================
 // ★ LOKALE SHOWLOG FUNKTION

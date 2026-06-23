@@ -40,7 +40,6 @@ import com.rk.terminal.R
 import com.rk.terminal.ui.activities.terminal.MainActivity
 import com.rk.terminal.ui.components.SettingsToggle
 import com.rk.terminal.ui.routes.MainActivityRoutes
-import com.rk.terminal.Globals
 
 // ============================================================
 // ★ LOKALE SHOWLOG FUNKTION
@@ -136,6 +135,11 @@ fun SettingsCard(
 // ============================================================
 // ★ WORKING MODE & INPUT MODE
 // ============================================================
+object WorkingMode {
+    const val ALPINE = 0
+    const val ANDROID = 1
+}
+
 object InputMode {
     const val DEFAULT = 0
     const val TYPE_NULL = 1
@@ -149,86 +153,54 @@ object InputMode {
 @Composable
 fun Settings(modifier: Modifier = Modifier, navController: NavController, mainActivity: MainActivity) {
     val context = LocalContext.current
+    var selectedOption by remember { mutableIntStateOf(Settings.working_Mode) }
     var selectedInputMode by remember { mutableIntStateOf(Settings.input_mode) }
-    
-    // ★ ★ ★ Globals WorkingMode ★ ★ ★
-    var selectedWorkingMode by remember { mutableIntStateOf(Globals.WORKING_MODE) }
 
     showLog("Info", "⚙️ Settings Screen geöffnet")
-    showLog("Debug", "⚙️ WorkingMode: ${Globals.getWorkingModeName()} (${Globals.WORKING_MODE})")
-    showLog("Debug", "⚙️ InputMode: $selectedInputMode")
+    showLog("Debug", "⚙️ WorkingMode: $selectedOption, InputMode: $selectedInputMode")
 
     PreferenceLayout(label = stringResource(strings.settings)) {
         
         // ============================================================
-        // ★ ★ ★ WORKING MODE (mit Globals) ★ ★ ★
+        // WORKING MODE
         // ============================================================
-        PreferenceGroup(heading = "Working Mode") {
-            
-            // ★ Alpine
+        PreferenceGroup(heading = stringResource(strings.default_working_mode)) {
             SettingsCard(
-                title = { Text("🐧 Alpine Linux") },
-                description = { Text("Leichtes Linux mit apk Paketmanager") },
+                title = { Text("Ubuntu") },
+                description = { Text(stringResource(strings.alpine_desc)) },
                 startWidget = {
                     RadioButton(
                         modifier = Modifier.padding(start = 8.dp),
-                        selected = selectedWorkingMode == Globals.WORKING_MODE_ALPINE,
+                        selected = selectedOption == WorkingMode.ALPINE,
                         onClick = {
-                            selectedWorkingMode = Globals.WORKING_MODE_ALPINE
-                            Globals.WORKING_MODE = selectedWorkingMode
-                            Settings.working_Mode = selectedWorkingMode
+                            selectedOption = WorkingMode.ALPINE
+                            Settings.working_Mode = selectedOption
                             showLog("Info", "🐧 WorkingMode geändert zu: ALPINE")
                         })
                 },
                 onClick = {
-                    selectedWorkingMode = Globals.WORKING_MODE_ALPINE
-                    Globals.WORKING_MODE = selectedWorkingMode
-                    Settings.working_Mode = selectedWorkingMode
+                    selectedOption = WorkingMode.ALPINE
+                    Settings.working_Mode = selectedOption
                     showLog("Info", "🐧 WorkingMode geändert zu: ALPINE (via Click)")
                 })
-            
-            // ★ Ubuntu
+
             SettingsCard(
-                title = { Text("🐧 Ubuntu Linux") },
-                description = { Text("Vollständiges Linux mit apt Paketmanager") },
+                title = { Text("Own") },
+                description = { Text(stringResource(strings.android_desc)) },
                 startWidget = {
                     RadioButton(
                         modifier = Modifier.padding(start = 8.dp),
-                        selected = selectedWorkingMode == Globals.WORKING_MODE_UBUNTU,
+                        selected = selectedOption == WorkingMode.ANDROID,
                         onClick = {
-                            selectedWorkingMode = Globals.WORKING_MODE_UBUNTU
-                            Globals.WORKING_MODE = selectedWorkingMode
-                            Settings.working_Mode = selectedWorkingMode
-                            showLog("Info", "🐧 WorkingMode geändert zu: UBUNTU")
+                            selectedOption = WorkingMode.ANDROID
+                            Settings.working_Mode = selectedOption
+                            showLog("Info", "🤖 WorkingMode geändert zu: ANDROID")
                         })
                 },
                 onClick = {
-                    selectedWorkingMode = Globals.WORKING_MODE_UBUNTU
-                    Globals.WORKING_MODE = selectedWorkingMode
-                    Settings.working_Mode = selectedWorkingMode
-                    showLog("Info", "🐧 WorkingMode geändert zu: UBUNTU (via Click)")
-                })
-            
-            // ★ Android
-            SettingsCard(
-                title = { Text("📟 Android Shell") },
-                description = { Text("Native Android Shell (ohne Rootfs)") },
-                startWidget = {
-                    RadioButton(
-                        modifier = Modifier.padding(start = 8.dp),
-                        selected = selectedWorkingMode == Globals.WORKING_MODE_ANDROID,
-                        onClick = {
-                            selectedWorkingMode = Globals.WORKING_MODE_ANDROID
-                            Globals.WORKING_MODE = selectedWorkingMode
-                            Settings.working_Mode = selectedWorkingMode
-                            showLog("Info", "📟 WorkingMode geändert zu: ANDROID")
-                        })
-                },
-                onClick = {
-                    selectedWorkingMode = Globals.WORKING_MODE_ANDROID
-                    Globals.WORKING_MODE = selectedWorkingMode
-                    Settings.working_Mode = selectedWorkingMode
-                    showLog("Info", "📟 WorkingMode geändert zu: ANDROID (via Click)")
+                    selectedOption = WorkingMode.ANDROID
+                    Settings.working_Mode = selectedOption
+                    showLog("Info", "🤖 WorkingMode geändert zu: ANDROID (via Click)")
                 })
         }
 

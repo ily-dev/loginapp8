@@ -1,5 +1,19 @@
 package com.rk.terminal.ui.screens.terminal
 
+// TerminalScreen.kt - Oben hinzufügen
+import android.content.Intent
+import androidx.compose.material.icons.filled.Android  // ★ Für Python-Button
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Text
+
+
+
+// ✅ RICHTIG (verwenden)
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.viewinterop.AndroidView
+import android.os.Build
+
 import android.app.Activity
 import android.content.Context
 import android.content.res.Configuration
@@ -45,7 +59,6 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -78,7 +91,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import androidx.core.widget.doOnTextChanged
@@ -105,7 +117,6 @@ import com.termux.view.TerminalView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -114,13 +125,7 @@ import java.io.IOException
 import java.lang.ref.WeakReference
 import java.net.UnknownHostException
 import java.util.Properties
-
-// ★ ★ ★ GLOBALS IMPORT ★ ★ ★
-import com.rk.terminal.Globals
-// TerminalScreen.kt - Oben hinzufügen
-import android.content.Intent
-import androidx.compose.ui.unit.sp
-import android.os.Build
+import kotlinx.coroutines.delay
 
 // ============================================================
 // ★ BESTEHENDE VARIABLEN
@@ -167,7 +172,7 @@ var showVirtualKeys = mutableStateOf(Settings.virtualKeys)
 var showHorizontalToolbar = mutableStateOf(Settings.toolbar)
 
 // ============================================================
-// ★ DOWNLOADER DATENKLASSEN
+// ★ DOWNLOADER DATENKLASSEN (aus Downloader.kt)
 // ============================================================
 private data class CopyFile(val assetPath: String, val outputFile: File)
 private data class DownloadFile(val url: String, val outputFile: File)
@@ -181,17 +186,19 @@ private data class AssetFiles(
 private data class AbiUrls(
     val talloc: String, 
     val proot: String
+    //val alpine: String
 )
 
-// ============================================================
-// ★ LOKALE SHOWLOG FUNKTION
-// ============================================================
-private fun showLog(title: String, message: String) {
-    Globals.showLog("TerminalScreen", "[$title] $message")
-}
 
 // ============================================================
-// ★ DOWNLOADER MAPS
+    // ★ LOKALE SHOWLOG FUNKTION
+    // ============================================================
+    private fun showLog(title: String, message: String) {
+        MainActivity.showLog("MkSession", "[$title] $message")
+    }
+
+// ============================================================
+// ★ DOWNLOADER MAPS (aus Downloader.kt)
 // ============================================================
 private val assetFilesMap = mapOf(
     "x86_64" to AssetFiles(
@@ -215,19 +222,23 @@ private val abiMap = mapOf(
     "x86_64" to AbiUrls(
         talloc = "https://raw.githubusercontent.com/Xed-Editor/Karbon-PackagesX/main/x86_64/libtalloc.so.2",
         proot = "https://raw.githubusercontent.com/Xed-Editor/Karbon-PackagesX/main/x86_64/proot",
+        //alpine = "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/x86_64/alpine-minirootfs-3.21.0-x86_64.tar.gz"
     ),
     "arm64-v8a" to AbiUrls(
         talloc = "https://raw.githubusercontent.com/Xed-Editor/Karbon-PackagesX/main/aarch64/libtalloc.so.2",
         proot = "https://raw.githubusercontent.com/Xed-Editor/Karbon-PackagesX/main/aarch64/proot",
+        //alpine = "https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/aarch64/alpine-minirootfs-3.24.0-aarch64.tar.gz"
+        //alpine = "https://cdimage.ubuntu.com/ubuntu-base/releases/jammy/release/ubuntu-base-22.04.1-base-arm64.tar.gz"
     ),
     "armeabi-v7a" to AbiUrls(
         talloc = "https://raw.githubusercontent.com/Xed-Editor/Karbon-PackagesX/main/arm/libtalloc.so.2",
         proot = "https://raw.githubusercontent.com/Xed-Editor/Karbon-PackagesX/main/arm/proot",
+        //alpine = "https://dl-cdn.alpinelinux.org/alpine/v3.21/releases/armhf/alpine-minirootfs-3.21.0-armhf.tar.gz"
     )
 )
 
 // ============================================================
-// ★ DOWNLOADER HILFSFUNKTIONEN
+// ★ DOWNLOADER HILFSFUNKTIONEN (aus Downloader.kt)
 // ============================================================
 private suspend fun copyAssetFile(
     context: Context, 
@@ -285,7 +296,7 @@ private suspend fun downloadFile(url: String, outputFile: File, onProgress: (Lon
 }
 
 // ============================================================
-// ★ DOWNLOADER LOGIK (mit Globals)
+// ★ DOWNLOADER LOGIK (aus Downloader.kt)
 // ============================================================
 suspend fun runDownloaderSetup(
     context: Context,
@@ -294,33 +305,27 @@ suspend fun runDownloaderSetup(
     onError: (String) -> Unit
 ) {
     try {
-        // ★ ★ ★ Globals für Debug ★ ★ ★
-        Globals.showLog("TerminalScreen", "🚀 runDownloaderSetup gestartet")
-        Globals.showLog("TerminalScreen", "📌 Rootfs-Typ: ${Globals.ROOTFS_TYPE}")
-        Globals.showLog("TerminalScreen", "📌 Rootfs-Datei: ${Globals.ROOTFS_FILE}")
-        
         // 1. ABI erkennen
         val abi = Build.SUPPORTED_ABIS.firstOrNull { it in abiMap } 
             ?: throw RuntimeException("Unsupported CPU")
         onProgress(0.05f, "🔍 ABI erkannt: $abi")
-        Globals.showLog("TerminalScreen", "✅ ABI: $abi")
         
         // ============================================================
-        // 2. ALLE ASSETS KOPIEREN
+        // 2. ALLE ASSETS KOPIEREN (private.tar + ubuntu.tar.gz)
         // ============================================================
         onProgress(0.1f, "📦 Kopiere Assets...")
-        Globals.showLog("TerminalScreen", "📦 Kopiere Assets...")
         
+        // ★ ★ ★ ALLE ASSETS ZUM KOPIEREN ★ ★ ★
         val filesToCopy = listOf(
             "private.tar" to assetFilesMap[abi]!!.privateTar,
             "ubuntu.tar.gz" to assetFilesMap[abi]!!.ubuntuTar,
             "alpine.tar.gz" to assetFilesMap[abi]!!.alpineTar
+            
         ).mapNotNull { (name, assetPath) -> 
             try {
                 context.assets.open(assetPath).close()
                 CopyFile(assetPath, Rootfs.reTerminal.child(name))
             } catch (e: IOException) {
-                Globals.showLog("TerminalScreen", "⚠️ $assetPath nicht in Assets")
                 onProgress(0.15f, "⚠️ $assetPath nicht in Assets")
                 null
             }
@@ -349,14 +354,12 @@ suspend fun runDownloaderSetup(
             }
         } else {
             onProgress(0.3f, "✅ Alle Assets bereits vorhanden")
-            Globals.showLog("TerminalScreen", "✅ Alle Assets bereits vorhanden")
         }
 
         // ============================================================
         // 3. LIBRARY DATEIEN KOPIEREN
         // ============================================================
         onProgress(0.3f, "📚 Kopiere Libraries...")
-        Globals.showLog("TerminalScreen", "📚 Kopiere Libraries...")
         
         val nativeLibDir = context.applicationInfo.nativeLibraryDir
         val targetFilesDir = Rootfs.reTerminal
@@ -375,22 +378,20 @@ suspend fun runDownloaderSetup(
             if (sourceFile.exists() && !targetFile.exists()) {
                 sourceFile.copyTo(targetFile, overwrite = true)
                 onProgress(0.3f + (libCompleted.toFloat() / libsToCopy.size) * 0.2f, "📚 Kopiere $libName...")
-                Globals.showLog("TerminalScreen", "📚 Kopiere $libName...")
             }
             libCompleted++
         }
         onProgress(0.5f, "✅ Libraries kopiert")
-        Globals.showLog("TerminalScreen", "✅ Libraries kopiert")
 
         // ============================================================
-        // 4. DATEIEN DOWNLOADEN
+        // 4. DATEIEN DOWNLOADEN (nur wenn nicht vorhanden)
         // ============================================================
         onProgress(0.5f, "🌐 Starte Downloads...")
-        Globals.showLog("TerminalScreen", "🌐 Starte Downloads...")
         
         val filesToDownload = listOf(
             "libtalloc.so.2" to abiMap[abi]!!.talloc,
             "proot" to abiMap[abi]!!.proot
+            //"alpine.tar.gz" to abiMap[abi]!!.alpine  // Fallback
         ).map { (name, url) -> DownloadFile(url, Rootfs.reTerminal.child(name)) }
 
         val needsDownload = filesToDownload.any { !it.outputFile.exists() }
@@ -415,30 +416,26 @@ suspend fun runDownloaderSetup(
             }
         } else {
             onProgress(0.9f, "✅ Alle Dateien bereits vorhanden")
-            Globals.showLog("TerminalScreen", "✅ Alle Dateien bereits vorhanden")
         }
 
         Rootfs.refreshStatus()
         onProgress(1.0f, "✅ Setup abgeschlossen!")
-        Globals.showLog("TerminalScreen", "✅ Setup abgeschlossen!")
-        
-        // ★ ★ ★ Globals für Delay ★ ★ ★
-        val delayMs = Globals.DIALOG_DELAY.toLong()
-        delay(delayMs)
-        
+        delay(500)
         onComplete(true)
 
     } catch (e: Exception) {
         if (e is UnknownHostException) {
             onError("Netzwerkfehler: ${e.message}")
-            Globals.showLog("TerminalScreen", "❌ Netzwerkfehler: ${e.message}")
         } else {
             onError("Setup-Fehler: ${e.message}")
-            Globals.showLog("TerminalScreen", "❌ Setup-Fehler: ${e.message}")
         }
         onComplete(false)
     }
 }
+
+
+
+
 
 // ============================================================
 // ★ HELPER-FUNKTIONEN
@@ -453,7 +450,7 @@ fun getNameOfWorkingMode(workingMode: Int?): String {
 }
 
 // ============================================================
-// ★ TERMINALSCREEN (mit Globals)
+// ★ TERMINALSCREEN MIT INTEGRIERTEM DOWNLOADER
 // ============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -473,14 +470,7 @@ fun TerminalScreen(
     var isDownloading by remember { mutableStateOf(false) }
     var setupComplete by remember { mutableStateOf(Rootfs.isDownloaded.value) }
 
-    // ★ ★ ★ Globals für Debug ★ ★ ★
-    if (Globals.DEBUG) {
-        Globals.showLog("TerminalScreen", "🖥️ TerminalScreen gestartet")
-        Globals.showLog("TerminalScreen", "📌 Rootfs: ${Globals.ROOTFS_TYPE}")
-        Globals.showLog("TerminalScreen", "📌 Init: ${Globals.INIT_SCRIPT}")
-    }
-
-    // ★ DOWNLOADER STARTEN
+    // ★ DOWNLOADER STARTEN (wenn nötig)
     LaunchedEffect(Unit) {
         if (!Rootfs.isDownloaded.value && !isDownloading) {
             isDownloading = true
@@ -505,7 +495,7 @@ fun TerminalScreen(
         }
     }
 
-    // ★ TERMINAL-INIT
+    // ★ TERMINAL-INIT (bestehend)
     LaunchedEffect(Unit){
         withContext(Dispatchers.IO){
             if (context.filesDir.child("background").exists().not()){
@@ -618,6 +608,7 @@ fun TerminalScreen(
             drawerState = drawerState,
             gesturesEnabled = drawerState.isOpen || !(showToolbar.value && (LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE || showHorizontalToolbar.value)),
             drawerContent = {
+                // ★ DRAWER (nur im Terminal-Modus)
                 if (Rootfs.isDownloaded.value) {
                     ModalDrawerSheet(modifier = Modifier.width(drawerWidth)) {
                         Column(
@@ -715,7 +706,7 @@ fun TerminalScreen(
                     BackgroundImage()
                     val color = getComposeColor()
                     Column {
-                        // ★ ★ ★ TOPAPPBAR MIT GLOBALS ★ ★ ★
+                        // ★ TOPAPPBAR
                         if (showToolbar.value && (LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE || showHorizontalToolbar.value)){
                             TopAppBar(
                                 colors = TopAppBarDefaults.topAppBarColors(
@@ -724,19 +715,16 @@ fun TerminalScreen(
                                 ),
                                 title = {
                                     Column {
-                                        // ★ ★ ★ Globals für Rootfs-Anzeige ★ ★ ★
-                                        val rootfsType = Globals.getRootfsDisplayName()
                                         Text(
-                                            text = if (Rootfs.isDownloaded.value) "ReTerminal ($rootfsType)" else "Downloader",
+                                            text = if (Rootfs.isDownloaded.value) "ReTerminal" else "Downloader",
                                             color = color
                                         )
                                         Text(
                                             style = MaterialTheme.typography.bodySmall,
                                             text = if (Rootfs.isDownloaded.value) {
-                                                val sessionText = mainActivityActivity.sessionBinder?.getService()?.currentSession?.value?.first ?: ""
-                                                "$sessionText (${rootfsType})"
+                                                mainActivityActivity.sessionBinder?.getService()?.currentSession?.value?.first + " (${getNameOfWorkingMode(mainActivityActivity.sessionBinder?.getService()?.currentSession?.value?.second)})"
                                             } else {
-                                                Globals.ROOTFS_FILE
+                                                progressText
                                             },
                                             color = color
                                         )
@@ -749,53 +737,47 @@ fun TerminalScreen(
                                         Icon(Icons.Default.Menu, null, tint = color)
                                     }
                                 },
+                                
                                 actions = {
-                                    // ★ ★ ★ Globals.DEBUG für Info-Button ★ ★ ★
-                                    if (Globals.DEBUG) {
-                                        IconButton(onClick = {
-                                            Globals.showLog("TerminalScreen", "📊 Status: ${Rootfs.isDownloaded.value}")
-                                            Globals.showLog("TerminalScreen", "📌 Rootfs: ${Globals.ROOTFS_TYPE}")
-                                        }) {
-                                            Text(
-                                                text = " 🔄  ",        // Oder "🔄", "🐍", "🤖", "📌"
-                                                fontSize = 24.sp,
-                                                color = color
-                                            )
-                                        }
-                                    }
-                                    
-                                    if (Rootfs.isDownloaded.value) {
-                                        // ★ Python-Button (mit Globals für Timeout)
-                                        IconButton(
-                                            onClick = {
-                                                Globals.showLog("TerminalScreen", "🐍 Python-Button gedrückt!")
-                                                try {
-                                                    val intent = Intent(mainActivityActivity, Class.forName("org.kivy.android.PythonActivity"))
-                                                    intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                                                    mainActivityActivity.startActivity(intent)
-                                                    Globals.showLog("TerminalScreen", "✅ Python in Vordergrund geholt")
-                                                } catch (e: Exception) {
-                                                    Globals.showLog("TerminalScreen", "❌ Fehler: ${e.message}")
-                                                }
-                                            }
-                                        ) {
-                                            Text(
-                                                text = "🤖",
-                                                fontSize = 24.sp,
-                                                color = color
-                                            )
-                                        }
-                                        
-                                        // ★ Add-Button
-                                        IconButton(
-                                            onClick = {
-                                                showAddDialog = true
-                                            }
-                                        ) {
-                                            Icon(Icons.Default.Add, null, tint = color)
-                                        }
-                                    }
-                                }
+            if (Rootfs.isDownloaded.value) {
+                // ★ Python-Button
+                IconButton(
+                    onClick = {
+                        showLog("Info", "🐍 Python-Button gedrückt!")
+                        try {
+                            val intent = Intent(mainActivityActivity, Class.forName("org.kivy.android.PythonActivity"))
+                            intent.flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                            mainActivityActivity.startActivity(intent)
+                            showLog("Info", "✅ Python in Vordergrund geholt")
+                        } catch (e: ClassNotFoundException) {
+                            showLog("Error", "❌ PythonActivity nicht gefunden: ${e.message}")
+                        } catch (e: Exception) {
+                            showLog("Error", "❌ Fehler: ${e.message}")
+                        }
+                    }
+                ) {
+                    Text(
+                        text = "🤖",
+                        fontSize = 24.sp,
+                        color = color
+                    )
+                }
+                
+                // ★ Add-Button
+                IconButton(
+                    onClick = {
+                        showAddDialog = true
+                    }
+                ) {
+                    Icon(Icons.Default.Add, null, tint = color)
+                }
+            }
+        }
+                                
+                                
+                                
+                                
+                                
                             )
                         }
 
@@ -883,7 +865,7 @@ fun TerminalScreen(
                                     },
                                 )
 
-                                // ★ VIRTUALKEYS
+                                // ★ VIRTUALKEYS (nur im Terminal-Modus)
                                 if (showVirtualKeys.value){
                                     val pagerState = rememberPagerState(pageCount = { 2 })
                                     val onSurfaceColor = MaterialTheme.colorScheme.onSurface.toArgb()
@@ -975,7 +957,7 @@ fun TerminalScreen(
                                     virtualKeysView = WeakReference(null)
                                 }
                             } else {
-                                // ★ ★ ★ DOWNLOADER ANSICHT ★ ★ ★
+                                // ★ ★ ★ DOWNLOADER ANSICHT (Spinner + Fortschritt) ★ ★ ★
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -993,7 +975,7 @@ fun TerminalScreen(
                                     
                                     Spacer(modifier = Modifier.height(24.dp))
                                     
-                                    // ★ Status-Text (mit Globals-Info)
+                                    // ★ Status-Text
                                     Text(
                                         text = progressText,
                                         color = color,
@@ -1043,7 +1025,7 @@ fun TerminalScreen(
 }
 
 // ============================================================
-// ★ BESTEHENDE FUNKTIONEN
+// ★ BESTEHENDE FUNKTIONEN (unverändert)
 // ============================================================
 var wallAlpha by mutableFloatStateOf(Settings.wallTransparency)
 

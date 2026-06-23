@@ -18,8 +18,6 @@ import java.util.concurrent.Executors
 import com.rk.terminal.ui.activities.terminal.MainActivity
 import com.rk.terminal.ui.screens.terminal.TerminalBackEnd
 
-import com.rk.terminal.Globals
-
 private fun showLog(title: String, message: String) {
     try {
         MainActivity.showLog("App", "[$title] $message")

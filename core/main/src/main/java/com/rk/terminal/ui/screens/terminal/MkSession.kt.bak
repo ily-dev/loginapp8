@@ -1,5 +1,6 @@
 package com.rk.terminal.ui.screens.terminal
 
+
 import android.os.Environment
 import com.rk.libcommons.alpineDir
 import com.rk.libcommons.alpineHomeDir
@@ -21,6 +22,7 @@ import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import java.io.File
 import java.io.FileOutputStream
+
 import com.rk.terminal.Globals
 
 object MkSession {
@@ -35,7 +37,7 @@ object MkSession {
     // ============================================================
     // ★ @JvmStatic HINZUGEFÜGT
     // ============================================================
-    @JvmStatic
+    @JvmStatic  // ← DAS IST DIE ÄNDERUNG!
     fun createSession(
         activity: MainActivity, 
         sessionClient: TerminalSessionClient, 
@@ -43,8 +45,7 @@ object MkSession {
         workingMode: Int
     ): TerminalSession {
         
-        showLog("Info", "🔍 Erstelle Session: $session_id")
-        showLog("Info", "📌 Globals WORKING_MODE: ${Globals.WORKING_MODE} (${Globals.getWorkingModeName()})")
+        showLog("Info", "🔍 Erstelle Session: $session_id, workingMode: $workingMode")
         
         with(activity) {
             val envVariables = mapOf(
@@ -59,50 +60,37 @@ object MkSession {
                 "EXTERNAL_STORAGE" to System.getenv("EXTERNAL_STORAGE")
             )
 
-            // ============================================================
-            // ★ ★ ★ WORKING DIRECTORY AUS GLOBALS ★ ★ ★
-            // ============================================================
-            val workingDir = when {
-                pendingCommand?.workingDir != null -> pendingCommand!!.workingDir
-                Globals.isAndroid() -> "/sdcard"  // Android Shell: SD-Karte
-                Globals.isUbuntu() -> "/home/test"  // Ubuntu: /home/test
-                else -> alpineHomeDir().path  // Alpine: /home/test
-            }
+            val workingDir = pendingCommand?.workingDir ?: alpineHomeDir().path
             showLog("Debug", "📁 WorkingDir: $workingDir")
-            showLog("Debug", "📌 WorkingMode: ${Globals.getWorkingModeName()}")
 
             // ============================================================
-            // INIT-HOST FILE (nur für Alpine/Ubuntu)
+            // INIT-HOST FILE
             // ============================================================
             val initFile: File = localBinDir().child("init-host")
 
-            if (!Globals.isAndroid()) {
-                if (initFile.exists().not()) {
-                    showLog("Info", "📄 Erstelle init-host...")
-                    initFile.createFileIfNot()
-                    val script = assets.open("init-host.sh").bufferedReader().use { it.readText() }
-                    initFile.writeText(script)
-                    showLog("Info", "✅ init-host erstellt (${script.length} bytes)")
-                } else {
-                    showLog("Debug", "⏭️ init-host bereits vorhanden")
-                }
-
-                // ============================================================
-                // INIT FILE (nur für Alpine/Ubuntu)
-                // ============================================================
-                localBinDir().child("init").apply {
-                    if (exists().not()) {
-                        showLog("Info", "📄 Erstelle init...")
-                        createFileIfNot()
-                        val script = assets.open("init.sh").bufferedReader().use { it.readText() }
-                        writeText(script)
-                        showLog("Info", "✅ init erstellt (${script.length} bytes)")
-                    } else {
-                        showLog("Debug", "⏭️ init bereits vorhanden")
-                    }
-                }
+            if (initFile.exists().not()) {
+                showLog("Info", "📄 Erstelle init-host...")
+                initFile.createFileIfNot()
+                val script = assets.open("init-host.sh").bufferedReader().use { it.readText() }
+                initFile.writeText(script)
+                showLog("Info", "✅ init-host erstellt (${script.length} bytes)")
             } else {
-                showLog("Info", "📟 Android-Modus: Keine init-Skripte benötigt")
+                showLog("Debug", "⏭️ init-host bereits vorhanden")
+            }
+
+            // ============================================================
+            // INIT FILE
+            // ============================================================
+            localBinDir().child("init").apply {
+                if (exists().not()) {
+                    showLog("Info", "📄 Erstelle init...")
+                    createFileIfNot()
+                    val script = assets.open("init.sh").bufferedReader().use { it.readText() }
+                    writeText(script)
+                    showLog("Info", "✅ init erstellt (${script.length} bytes)")
+                } else {
+                    showLog("Debug", "⏭️ init bereits vorhanden")
+                }
             }
 
             // ============================================================
@@ -131,25 +119,21 @@ object MkSession {
             showLog("Debug", "🔧 ${env.size} Environment-Variablen gesetzt")
 
             // ============================================================
-            // PROOT LOADER (nur für Alpine/Ubuntu)
+            // PROOT LOADER
             // ============================================================
-            if (!Globals.isAndroid()) {
-                if (File(applicationInfo.nativeLibraryDir).child("libproot-loader32.so").exists()) {
-                    env.add("PROOT_LOADER32=${applicationInfo.nativeLibraryDir}/libproot-loader32.so")
-                    showLog("Debug", "🔧 PROOT_LOADER32 gesetzt")
-                }
+            if (File(applicationInfo.nativeLibraryDir).child("libproot-loader32.so").exists()) {
+                env.add("PROOT_LOADER32=${applicationInfo.nativeLibraryDir}/libproot-loader32.so")
+                showLog("Debug", "🔧 PROOT_LOADER32 gesetzt")
+            }
 
-                if (File(applicationInfo.nativeLibraryDir).child("libproot-loader.so").exists()) {
-                    env.add("PROOT_LOADER=${applicationInfo.nativeLibraryDir}/libproot-loader.so")
-                    showLog("Debug", "🔧 PROOT_LOADER gesetzt")
-                }
+            if (File(applicationInfo.nativeLibraryDir).child("libproot-loader.so").exists()) {
+                env.add("PROOT_LOADER=${applicationInfo.nativeLibraryDir}/libproot-loader.so")
+                showLog("Debug", "🔧 PROOT_LOADER gesetzt")
+            }
 
-                if (Settings.seccomp) {
-                    env.add("SECCOMP=1")
-                    showLog("Debug", "🔧 SECCOMP aktiviert")
-                }
-            } else {
-                showLog("Debug", "📟 Android-Modus: Keine Proot-Loader benötigt")
+            if (Settings.seccomp) {
+                env.add("SECCOMP=1")
+                showLog("Debug", "🔧 SECCOMP aktiviert")
             }
 
             env.addAll(envVariables.map { "${it.key}=${it.value}" })
@@ -177,32 +161,18 @@ object MkSession {
             }
 
             // ============================================================
-            // ★ ★ ★ SHELL & ARGS BASIEREND AUF GLOBALS.WORKING_MODE ★ ★ ★
+            // SHELL & ARGS
             // ============================================================
             val args: Array<String>
             val shell = if (pendingCommand == null) {
-                when (Globals.WORKING_MODE) {
-                    Globals.WORKING_MODE_ALPINE -> {
-                        showLog("Info", "🐧 Starte Alpine Linux mit init-host")
-                        args = arrayOf("-c", initFile.absolutePath)
-                        "/system/bin/sh"
-                    }
-                    Globals.WORKING_MODE_UBUNTU -> {
-                        showLog("Info", "🐧 Starte Ubuntu Linux mit init-host")
-                        args = arrayOf("-c", initFile.absolutePath)
-                        "/system/bin/sh"
-                    }
-                    Globals.WORKING_MODE_ANDROID -> {
-                        showLog("Info", "📟 Starte Android Shell")
-                        args = arrayOf()
-                        "/system/bin/sh"
-                    }
-                    else -> {
-                        showLog("Warn", "⚠️ Unbekannter WorkingMode: ${Globals.WORKING_MODE}, verwende Alpine")
-                        args = arrayOf("-c", initFile.absolutePath)
-                        "/system/bin/sh"
-                    }
+                args = if (workingMode == WorkingMode.ALPINE) {
+                    showLog("Info", "🐧 Starte Alpine mit init-host")
+                    arrayOf("-c", initFile.absolutePath)
+                } else {
+                    showLog("Info", "📟 Starte lokale Shell")
+                    arrayOf()
                 }
+                "/system/bin/sh"
             } else {
                 args = pendingCommand!!.args
                 val cmdShell = pendingCommand!!.shell
@@ -213,7 +183,6 @@ object MkSession {
             pendingCommand = null
 
             showLog("Info", "✅ Session erstellt: shell=$shell, workingDir=$workingDir")
-            showLog("Info", "📌 WorkingMode: ${Globals.getWorkingModeName()}")
             showLog("Debug", "📋 Args: ${args.joinToString(" ")}")
             showLog("Debug", "📋 Env: ${env.joinToString(" ")}")
 

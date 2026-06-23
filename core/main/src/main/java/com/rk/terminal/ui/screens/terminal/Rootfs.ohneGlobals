@@ -6,8 +6,8 @@ import com.rk.libcommons.application
 import com.rk.libcommons.child
 import com.rk.terminal.App
 import com.rk.terminal.ui.activities.terminal.MainActivity
-import com.rk.terminal.Globals
 import java.io.File
+import com.rk.terminal.Globals
 
 object Rootfs {
     
@@ -17,15 +17,15 @@ object Rootfs {
     private fun showLog(title: String, message: String) {
         MainActivity.showLog("Rootfs", "[$title] $message")
     }
+    
+    // Oder kürzer:
+    // private fun showLog(message: String) = MainActivity.showLog("Rootfs", message)
 
     val reTerminal = application!!.filesDir
 
     init {
         showLog("Info", "🔍 Initialisiere Rootfs...")
         showLog("Debug", "📁 Pfad: ${reTerminal.absolutePath}")
-        showLog("Info", "📌 Rootfs-Typ (Globals): ${Globals.getRootfsDisplayName()}")
-        showLog("Info", "📌 Rootfs-Datei (Globals): ${Globals.ROOTFS_FILE}")
-        showLog("Info", "📌 WorkingDir (Globals): ${getWorkingDir()}")
         
         if (reTerminal.exists().not()) {
             showLog("Info", "📁 Erstelle Verzeichnis: ${reTerminal.absolutePath}")
@@ -42,74 +42,25 @@ object Rootfs {
         // Initialen Status prüfen
         val downloaded = isFilesDownloaded()
         showLog("Info", "📊 Initialer Download-Status: ${if (downloaded) "✅ Geladen" else "❌ Nicht geladen"}")
-        showLog("Info", "📊 Rootfs-Typ: ${if (Globals.isAlpine()) "Alpine" else if (Globals.isUbuntu()) "Ubuntu" else "Unknown"}")
-        showLog("Info", "📊 WorkingDir: ${getWorkingDir()}")
     }
 
     var isDownloaded = mutableStateOf(isFilesDownloaded())
     
-    // ============================================================
-    // ★ ★ ★ WORKING DIRECTORY ★ ★ ★
-    // ============================================================
-    fun getWorkingDir(): String {
-        return when {
-            Globals.isAndroid() -> "/sdcard"
-            Globals.isUbuntu() -> "/home/test"
-            else -> "/home/test"  // Alpine
-        }
-    }
-    
-    fun getWorkingDirDisplay(): String {
-        return when {
-            Globals.isAndroid() -> "📟 Android: /sdcard"
-            Globals.isUbuntu() -> "🐧 Ubuntu: /home/test"
-            else -> "🐧 Alpine: /home/test"
-        }
-    }
-    
-    // ============================================================
-    // ★ ★ ★ KERN-FUNKTION: Prüft auf richtige Rootfs-Datei ★ ★ ★
-    // ============================================================
     fun isFilesDownloaded(): Boolean {
-        // ★ ★ ★ Für Android-Modus: Keine Rootfs-Datei nötig! ★ ★ ★
-        if (Globals.isAndroid()) {
-            showLog("Debug", "📌 Android-Modus: Keine Rootfs-Datei benötigt")
-            val exists = reTerminal.exists() && 
-                         reTerminal.child("proot").exists() && 
-                         reTerminal.child("libtalloc.so.2").exists()
-            
-            if (exists) {
-                showLog("Debug", "✅ Alle Dateien für Android-Modus vorhanden")
-            } else {
-                val missingFiles = mutableListOf<String>()
-                if (!reTerminal.exists()) missingFiles.add("reTerminal")
-                if (!reTerminal.child("proot").exists()) missingFiles.add("proot")
-                if (!reTerminal.child("libtalloc.so.2").exists()) missingFiles.add("libtalloc.so.2")
-                if (missingFiles.isNotEmpty()) {
-                    showLog("Debug", "⚠️ Fehlende Dateien für Android: ${missingFiles.joinToString(", ")}")
-                }
-            }
-            return exists
-        }
-        
-        // ★ ★ ★ Für Alpine/Ubuntu: Rootfs-Datei prüfen ★ ★ ★
-        val rootfsFile = getRootfsFileName()
-        showLog("Debug", "📌 Prüfe auf Rootfs-Datei: $rootfsFile")
-        
         val exists = reTerminal.exists() && 
                      reTerminal.child("proot").exists() && 
                      reTerminal.child("libtalloc.so.2").exists() && 
-                     reTerminal.child(rootfsFile).exists()
+                     reTerminal.child("alpine.tar.gz").exists()
         
         if (exists) {
-            showLog("Debug", "✅ Alle Dateien für ${Globals.getRootfsDisplayName()} vorhanden")
+            showLog("Debug", "✅ Alle Dateien vorhanden")
         } else {
             // Zeige welche Dateien fehlen (für Debugging)
             val missingFiles = mutableListOf<String>()
             if (!reTerminal.exists()) missingFiles.add("reTerminal")
             if (!reTerminal.child("proot").exists()) missingFiles.add("proot")
             if (!reTerminal.child("libtalloc.so.2").exists()) missingFiles.add("libtalloc.so.2")
-            if (!reTerminal.child(rootfsFile).exists()) missingFiles.add(rootfsFile)
+            if (!reTerminal.child("alpine.tar.gz").exists()) missingFiles.add("alpine.tar.gz")
             
             if (missingFiles.isNotEmpty()) {
                 showLog("Debug", "⚠️ Fehlende Dateien: ${missingFiles.joinToString(", ")}")
@@ -118,39 +69,6 @@ object Rootfs {
         
         return exists
     }
-    
-    // ============================================================
-    // ★ ★ ★ ROOTFS-DATEINAME AUS GLOBALS ★ ★ ★
-    // ============================================================
-    fun getRootfsFileName(): String {
-        // ★ ★ ★ Für Android-Modus: Keine Rootfs-Datei ★ ★ ★
-        if (Globals.isAndroid()) {
-            return "android"  // Dummy-Wert
-        }
-        val file = Globals.ROOTFS_FILE
-        val fileName = file.substringAfterLast('/')
-        showLog("Debug", "📄 Rootfs-Datei: $fileName (aus Globals: $file)")
-        return fileName
-    }
-    
-    // ============================================================
-    // ★ ★ ★ PRÜFT OB UBUNTU, ALPINE ODER ANDROID ★ ★ ★
-    // ============================================================
-    fun isUbuntu(): Boolean = Globals.isUbuntu()
-    fun isAlpine(): Boolean = Globals.isAlpine()
-    fun isAndroid(): Boolean = Globals.isAndroid()
-    
-    fun getRootfsType(): String = when {
-        isUbuntu() -> "Ubuntu"
-        isAndroid() -> "Android Shell"
-        else -> "Alpine"
-    }
-    
-    // ============================================================
-    // ★ ★ ★ WORKING MODE NAME ★ ★ ★
-    // ============================================================
-    fun getWorkingModeName(): String = Globals.getWorkingModeName()
-    fun getWorkingModeShort(): String = Globals.getWorkingModeShortName()
     
     // ============================================================
     // NEU: Aktualisiert den Download-Status
@@ -198,7 +116,7 @@ object Rootfs {
     }
     
     /**
-     * Zeige alle Dateien im reTerminal-Verzeichnis an
+     * Zeigt alle Dateien im reTerminal-Verzeichnis an
      */
     fun listFiles(): List<String> {
         val files = reTerminal.listFiles()?.map { it.name } ?: emptyList()
@@ -248,27 +166,15 @@ object Rootfs {
     }
     
     /**
-     * Zeige detaillierte Informationen über den Rootfs-Status
+     * Zeigt detaillierte Informationen über den Rootfs-Status
      */
     fun showStatus() {
-        val rootfsType = getRootfsType()
-        val rootfsFile = getRootfsFileName()
-        val workingDir = getWorkingDir()
-        val modeName = getWorkingModeName()
-        
         showLog("Info", "📊 ROOTFS-STATUS")
         showLog("Info", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         showLog("Info", "📁 Pfad: ${reTerminal.absolutePath}")
         showLog("Info", "📁 Existiert: ${if (reTerminal.exists()) "✅" else "❌"}")
-        showLog("Info", "📌 Working Mode: $modeName")
-        showLog("Info", "📌 Working Dir: $workingDir")
-        showLog("Info", "📌 Rootfs-Typ: $rootfsType")
-        showLog("Info", "📌 Rootfs-Datei: $rootfsFile")
         
-        val files = when {
-            isAndroid() -> listOf("proot", "libtalloc.so.2")
-            else -> listOf("proot", "libtalloc.so.2", rootfsFile)
-        }
+        val files = listOf("proot", "libtalloc.so.2", "alpine.tar.gz")
         for (file in files) {
             val exists = reTerminal.child(file).exists()
             showLog("Info", "📄 $file: ${if (exists) "✅" else "❌"}")
