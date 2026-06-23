@@ -1,0 +1,152 @@
+package com.meinname.loginapp8;
+
+import android.content.Intent;
+import android.content.Context;
+import android.os.IBinder;
+import android.util.Log;
+import org.kivy.android.PythonService;
+import java.io.File;  // ← DAS FEHLT!
+import java.io.IOException;  // optional
+
+public class ServiceMyservice extends PythonService {
+    
+    private static final String TAG = "ServiceMyservice";
+    
+    
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        showLog(TAG, "onCreate");
+        
+        // ============================================================
+        // ENTPACKE LIBPYBUNDLE.SO MANUELL (ohne java.nio)
+        // ============================================================
+        try {
+            File appDir = new File(getFilesDir(), "app");
+            File libDir = new File(appDir, "lib");
+            
+            if (!libDir.exists()) {
+                libDir.mkdirs();
+                showLog(TAG, "📁 lib/ Verzeichnis erstellt");
+                
+                String nativeLibDir = getApplicationInfo().nativeLibraryDir;
+                
+                // Kopiere libpybundle.so
+                File sourceSo = new File(nativeLibDir, "libpybundle.so");
+                File targetSo = new File(libDir, "libpybundle.so");
+                
+                if (sourceSo.exists()) {
+                    copyFile(sourceSo, targetSo);
+                    showLog(TAG, "✅ libpybundle.so kopiert");
+                }
+                
+                // Kopiere libpython3.11.so
+                File sourcePython = new File(nativeLibDir, "libpython3.11.so");
+                File targetPython = new File(libDir, "libpython3.11.so");
+                
+                if (sourcePython.exists()) {
+                    copyFile(sourcePython, targetPython);
+                    showLog(TAG, "✅ libpython3.11.so kopiert");
+                }
+            }
+        } catch (Exception e) {
+            showLog(TAG, "Fehler: " + e.getMessage());
+        }
+    }
+    
+// Hilfsmethode zum Kopieren
+private void copyFile(File source, File dest) throws IOException {
+    java.io.FileInputStream fis = new java.io.FileInputStream(source);
+    java.io.FileOutputStream fos = new java.io.FileOutputStream(dest);
+    byte[] buffer = new byte[8192];
+    int length;
+    while ((length = fis.read(buffer)) > 0) {
+        fos.write(buffer, 0, length);
+    }
+    fis.close();
+    fos.close();
+}
+    
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        showLog(TAG, "Service onStartCommand");
+        return super.onStartCommand(intent, flags, startId);
+    }
+    
+    @Override
+    protected int getServiceId() {
+        return 1;
+    }
+    
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+    
+    // Von private zu public static
+    public static void showLog(String tag, String message) {
+    
+    //"PythonUtil"
+
+    // Dann einfach:
+    PythonService.showLog( tag, message);
+    
+    }
+    
+    // ============================================================
+    // EINFACHE VERSION (nur 2 Parameter)
+    // ============================================================
+    static public Intent getDefaultIntent(Context ctx, String pythonServiceArgument) {
+    Intent intent = new Intent(ctx, ServiceMyservice.class);
+    
+    showLog(TAG, "getDefaultIntent");
+    
+    String filesDir = ctx.getFilesDir().getAbsolutePath();
+    String appRoot = filesDir + "/app";
+    String nativeLibDir = ctx.getApplicationInfo().nativeLibraryDir;  // ← Hier sind die .so Dateien!
+    
+    intent.putExtra("androidPrivate", filesDir);
+    intent.putExtra("androidArgument", appRoot);
+    intent.putExtra("serviceEntrypoint", "service/main.pyc");
+    intent.putExtra("pythonName", "myservice");
+    intent.putExtra("serviceStartAsForeground", "true");
+    intent.putExtra("pythonHome", appRoot);
+    intent.putExtra("pythonPath", 
+        appRoot + ":" + 
+        appRoot + "/lib:" + 
+        nativeLibDir);  // ← Native Library Pfad!
+    intent.putExtra("pythonServiceArgument", pythonServiceArgument);
+    intent.putExtra("smallIconName", "");
+    intent.putExtra("contentTitle", "ReTerminal");
+    intent.putExtra("contentText", "Service läuft");
+    
+    return intent;
+}
+    
+    // ============================================================
+    // START METHODEN
+    // ============================================================
+    static public void start(Context ctx, String pythonServiceArgument) {
+        android.util.Log.e("ServiceMyservice", "!!! START METHODE WURDE AUFGERUFEN !!!");
+        
+        showLog(TAG, "start() called with: " + pythonServiceArgument);
+        
+        Intent intent = getDefaultIntent(ctx, pythonServiceArgument);
+        
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            showLog(TAG, "ctx.startForegroundService(intent)");
+            ctx.startForegroundService(intent);
+        } else {
+            showLog(TAG, "ctx.startService(intent)");
+            ctx.startService(intent);
+            
+            
+        }
+    }
+    
+    static public void stop(Context ctx) {
+        Intent intent = new Intent(ctx, ServiceMyservice.class);
+        showLog(TAG, "stop()");
+        ctx.stopService(intent);
+    }
+}

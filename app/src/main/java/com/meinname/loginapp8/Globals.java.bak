@@ -1,0 +1,39 @@
+// Globals.java
+package com.meinname.loginapp8;
+
+import android.content.Context;
+import java.io.InputStream;
+import java.util.Properties;
+
+public class Globals {
+    public static int DIALOG_DELAY = 3000;
+    public static String APP_VERSION = "1.2.1";
+    public static boolean DEBUG = true;
+    public static int TIMEOUT = 30;
+    public static int MAX_RETRIES = 3;
+    public static String PYTHON_HOME = "";
+    public static String LOG_DIR = "/sdcard/logs";
+    
+    // Initialisierung (muss von Activity aufgerufen werden)
+    public static void init(Context context) {
+        try {
+            InputStream inputStream = context.getAssets().open("config.ini");
+            Properties props = new Properties();
+            props.load(inputStream);
+            inputStream.close();
+            
+            // Werte aus config.ini lesen
+            DIALOG_DELAY = Integer.parseInt(props.getProperty("DIALOG_DELAY", "500"));
+            APP_VERSION = props.getProperty("APP_VERSION", "1.2.1");
+            DEBUG = Boolean.parseBoolean(props.getProperty("DEBUG", "true"));
+            TIMEOUT = Integer.parseInt(props.getProperty("TIMEOUT", "30"));
+            MAX_RETRIES = Integer.parseInt(props.getProperty("MAX_RETRIES", "3"));
+            PYTHON_HOME = props.getProperty("PYTHON_HOME", "");
+            LOG_DIR = props.getProperty("LOG_DIR", "/sdcard/logs");
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Fallback-Werte bleiben bestehen
+        }
+    }
+}

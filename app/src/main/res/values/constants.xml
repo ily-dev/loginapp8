@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Globale Konstanten -->
+    <integer name="dialog_delay_ms">500</integer>
+    <integer name="max_retries">3</integer>
+    <integer name="timeout_seconds">30</integer>
+    
+    <!-- String Konstanten -->
+    <string name="app_version">1.2.1</string>
+    
+    <!-- Boolean Konstanten -->
+    <bool name="enable_debug">true</bool>
+</resources>

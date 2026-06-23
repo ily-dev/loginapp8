@@ -1,0 +1,312 @@
+package com.meinname.loginapp8;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.WindowManager;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.os.AsyncTask;
+import android.os.Environment;
+import android.provider.Settings;
+import android.util.Log;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.TextView;
+import android.widget.Toast;
+import android.view.LayoutInflater;
+import android.view.View;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import org.kivy.android.PythonService;
+import org.kivy.android.PythonUtil;
+
+public class MyCustomActivity extends Activity {
+    private static final String TAG = "MyCustomActivity";
+    
+    private boolean pythonAvailable = false;
+    private RadioButton rbPython, rbTerminal;
+    private TextView tvStatus, tvHint;
+    private RadioGroup radioGroup;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        // ============================================================
+        // XML-Layout laden
+        // ============================================================
+        setContentView(R.layout.activity_my_custom);
+        
+        // Views initialisieren
+        tvStatus = findViewById(R.id.tvStatus);
+        tvHint = findViewById(R.id.tvHint);
+        radioGroup = findViewById(R.id.radioGroup);
+        rbPython = findViewById(R.id.rbPython);
+        rbTerminal = findViewById(R.id.rbTerminal);
+        
+        PythonService.setAppContext(this); 
+        
+        // ============================================================
+        // HINTERGRUND-SERVICE STARTEN (ohne GUI)
+        // ============================================================
+        startBackgroundSetup();
+        
+        showLog(TAG, "python initialisieren!!! ");
+        
+        File filesDir = getFilesDir();
+        if (!filesDir.exists()) {
+            filesDir.mkdirs();
+            Log.d(TAG, "files/ wurde erstellt");
+            showLog(TAG, "files/ wurde erstellt");
+        } else {
+            Log.d(TAG, "files/ schon vorhanden");
+        }
+    
+        showLog(TAG, "MyCustomActivity wird gestartet.");
+        
+        // Hardware-Beschleunigung
+        try {
+            getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            );
+        } catch (Exception e) {
+            showLog(TAG, "Fehler: " + e.getMessage());
+        }
+
+        // Berechtigung für Android 11+
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            if (!Environment.isExternalStorageManager()) {
+                Intent storageIntent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                startActivity(storageIntent);
+            }
+        }
+
+        // Prüfen, ob Python verfügbar ist
+        pythonAvailable = checkPythonAvailability();
+
+        // Status-Text setzen
+        if (pythonAvailable) {
+            tvStatus.setText("✅ Python/Kivy ist verfügbar.");
+        } else {
+            tvStatus.setText("❌ Python wurde NICHT gefunden! Nur Terminal verfügbar.");
+            tvHint.setVisibility(View.VISIBLE);
+            tvHint.setText("💡 Tipp: Führe 'buildozer -v android debug' aus,\num den Python-Bundle zu erstellen.");
+        }
+
+        // RadioGroup Listener
+        radioGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            // Keine Aktion nötig, nur für UI
+        });
+
+        // Auswahl-Dialog anzeigen
+        showModeSelectionDialog();
+    }
+    
+    public static void showLog(String tag, String message) {
+        PythonService.showLog(tag, message);
+    }
+
+    private boolean checkPythonAvailability() {
+        return checkPythonNativeLibs();
+    }
+
+    private boolean checkPythonNativeLibs() {
+        String nativeLibDir = getApplicationInfo().nativeLibraryDir;
+        
+        String[] requiredLibs = {
+            "libpython3.11.so",
+            "libmain.so",
+            "libpybundle.so"
+        };
+        
+        for (String lib : requiredLibs) {
+            File libFile = new File(nativeLibDir, lib);
+            if (!libFile.exists()) {
+                Log.w(TAG, "Fehlende native Bibliothek: " + lib);
+                return false;
+            }
+        }
+        
+        showLog(TAG, "Alle nativen Python-Bibliotheken gefunden in: " + nativeLibDir);
+        return true;
+    }
+
+    private void showModeSelectionDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Modus auswählen");
+        
+        // Das bereits erstellte Layout verwenden
+        View dialogView = getLayoutInflater().inflate(R.layout.activity_my_custom, null);
+        
+        // RadioGroup aus dem Dialog-Layout
+        RadioGroup dialogRadioGroup = dialogView.findViewById(R.id.radioGroup);
+        RadioButton dialogRbPython = dialogView.findViewById(R.id.rbPython);
+        RadioButton dialogRbTerminal = dialogView.findViewById(R.id.rbTerminal);
+        TextView dialogTvStatus = dialogView.findViewById(R.id.tvStatus);
+        TextView dialogTvHint = dialogView.findViewById(R.id.tvHint);
+        
+        // Status setzen
+        if (pythonAvailable) {
+            dialogTvStatus.setText("✅ Python/Kivy ist verfügbar.");
+            dialogRbPython.setVisibility(View.VISIBLE);
+        } else {
+            dialogTvStatus.setText("❌ Python wurde NICHT gefunden! Nur Terminal verfügbar.");
+            dialogRbPython.setVisibility(View.GONE);
+            dialogTvHint.setVisibility(View.VISIBLE);
+            dialogTvHint.setText("💡 Tipp: Führe 'buildozer -v android debug' aus,\num den Python-Bundle zu erstellen.");
+        }
+        
+        // Standard-Auswahl
+        if (pythonAvailable) {
+            dialogRbPython.setChecked(true);
+        } else {
+            dialogRbTerminal.setChecked(true);
+        }
+        
+        builder.setView(dialogView);
+        builder.setCancelable(false);
+
+        builder.setPositiveButton("STARTEN", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                int selectedId = dialogRadioGroup.getCheckedRadioButtonId();
+                
+                if (pythonAvailable && selectedId == R.id.rbPython) {
+                    startAllThree();
+                } else {
+                    startReTerminalMode();
+                }
+            }
+        });
+
+        builder.setNegativeButton("Beenden", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                finish();
+            }
+        });
+
+        builder.show();
+    }
+    
+    // ============================================================
+    // SERVICE STARTEN
+    // ============================================================
+    private void startMyservice() {
+        try {
+            showLog(TAG, "Starte ServiceMyservice...");
+            ServiceMyservice.start(this, "my_arg");
+            showLog(TAG, "Service im Hintergrund gestartet");
+            
+        } catch (Exception e) {
+            showLog(TAG, "Service Fehler: " + e.getMessage());
+        }
+    }
+
+    public void startPythonMode() {
+        showLog(TAG, "Python-Modus gewählt");
+        
+        if (pythonAvailable) {
+            Intent intent = new Intent(this, org.kivy.android.PythonActivity.class);
+            startActivity(intent);
+            finish();
+        } else {
+            Toast.makeText(this, "Python-Bibliotheken fehlen!", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void startReTerminalMode() {
+        showLog(TAG, "Terminal-Modus gewählt");
+        Intent intent = new Intent(MyCustomActivity.this, 
+            com.rk.terminal.ui.activities.terminal.MainActivity.class);
+        startActivity(intent);
+        finish();
+    }
+    
+    // ============================================================
+    // Alle drei gleichzeitig starten
+    // ============================================================
+    
+    private void startAllThree() {
+        // 1. Service im Hintergrund starten
+        ServiceMyservice.start(this, "my_arg");
+        
+        // 2. Python normal (Kivy-App) im Vordergrund
+        Intent pythonIntent = new Intent(this, org.kivy.android.PythonActivity.class);
+        startActivity(pythonIntent);
+        
+        // 3. ReTerminal (Terminal) im Hintergrund
+        Intent terminalIntent = new Intent(this, 
+            com.rk.terminal.ui.activities.terminal.MainActivity.class);
+        terminalIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(terminalIntent);
+    }
+    
+    // ============================================================
+    // HINTERGRUND-SERVICE MIT ENTPACKEN
+    // ============================================================
+    private void startBackgroundSetup() {
+        // Starte einen Thread für Hintergrund-Entpacken
+        new Thread(() -> {
+            try {
+                showLog(TAG, "Starte Hintergrund-Entpacken...");
+                
+                File appDir = new File(getFilesDir(), "app");
+                appDir.mkdirs();
+                
+                // 1. private.tar entpacken
+                PythonUtil.unpackAsset(this, "private", appDir, true);
+                showLog(TAG, "✅ private.tar entpackt");
+                
+                // 2. libpybundle entpacken
+                PythonUtil.unpackPyBundle(this, 
+                    getApplicationInfo().nativeLibraryDir + "/libpybundle", 
+                    appDir, false);
+                showLog(TAG, "✅ libpybundle entpackt");
+                
+                // 3. Libs kopieren
+                File libDir = new File(appDir, "lib");
+                if (!libDir.exists()) {
+                    libDir.mkdirs();
+                    String nativeLibDir = getApplicationInfo().nativeLibraryDir;
+                    
+                    // libpybundle.so kopieren
+                    File sourceSo = new File(nativeLibDir, "libpybundle.so");
+                    File targetSo = new File(libDir, "libpybundle.so");
+                    if (sourceSo.exists()) {
+                        copyFile(sourceSo, targetSo);
+                        showLog(TAG, "✅ libpybundle.so kopiert");
+                    }
+                    
+                    // libpython3.11.so kopieren
+                    File sourcePython = new File(nativeLibDir, "libpython3.11.so");
+                    File targetPython = new File(libDir, "libpython3.11.so");
+                    if (sourcePython.exists()) {
+                        copyFile(sourcePython, targetPython);
+                        showLog(TAG, "✅ libpython3.11.so kopiert");
+                    }
+                }
+                
+                showLog(TAG, "✅ Hintergrund-Setup abgeschlossen");
+            } catch (Exception e) {
+                showLog(TAG, "❌ Hintergrund-Fehler: " + e.getMessage());
+            }
+        }).start();
+    }
+    
+    private void copyFile(File source, File dest) throws IOException {
+        FileInputStream fis = new FileInputStream(source);
+        FileOutputStream fos = new FileOutputStream(dest);
+        byte[] buffer = new byte[8192];
+        int length;
+        while ((length = fis.read(buffer)) > 0) {
+            fos.write(buffer, 0, length);
+        }
+        fis.close();
+        fos.close();
+    }
+}
