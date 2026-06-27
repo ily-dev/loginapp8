@@ -1,11 +1,13 @@
 ALPINE_DIR=$PREFIX/local/alpine
 APP_FILES_DIR=$PREFIX/files
+LOCAL_DIR=$PREFIX/local
 PROFILE=$PREFIX/local/alpine/root/.profile
+TARFILE_ALPINE=$PREFIX/files/alpine.tar.gz
 
 mkdir -p $ALPINE_DIR
 
 if [ -z "$(ls -A "$ALPINE_DIR" | grep -vE '^(root|tmp)$')" ]; then
-    tar -xf "$PREFIX/files/alpine.tar.gz" -C "$ALPINE_DIR"
+    tar -xf $TARFILE_ALPINE -C "$ALPINE_DIR"
 fi
 
 [ ! -e "$PREFIX/local/bin/proot" ] && cp "$PREFIX/files/proot" "$PREFIX/local/bin"
@@ -48,6 +50,21 @@ ARGS="$ARGS -b $PREFIX/local/vmstat:/proc/vmstat"
 # $PREFIX ist normalerweise: /data/data/com.xxx.xxx/files/usr
 # Das App-Verzeichnis ist dann: $(dirname $PREFIX)/app
 
+#!/system/bin/sh
+# init-host.sh
+
+# Alle Ordner in local durchgehen (außer alpine und ubuntu)
+for dir in "$LOCAL_DIR"/*; do
+    if [ -d "$dir" ]; then
+        basename=$(basename "$dir")
+        # ★ ★ ★ ALPINE UND UBUNTU AUSSCHLIESSEN ★ ★ ★
+        if [ "$basename" != "alpine" ] && [ "$basename" != "ubuntu" ]; then
+            ARGS="$ARGS -b $dir:/root/local/$basename"
+            echo "📁 Mount: $dir → /root/local/$basename"
+        fi
+    fi
+done
+
 
 if [ -d "$APP_FILES_DIR" ]; then
     ARGS="$ARGS -b $APP_FILES_DIR:/root/app_files"
@@ -56,9 +73,7 @@ else
     echo "⚠️ App-Verzeichnis nicht gefunden: $APP_FILES_DIR"
 fi
 
-#if  [ -f "$PROFILE" ]; then
-#    source "$PROFILE"
-#fi
+
 
 if [ -e "/proc/self/fd" ]; then
   ARGS="$ARGS -b /proc/self/fd:/dev/fd"
@@ -76,7 +91,6 @@ if [ -e "/proc/self/fd/2" ]; then
   ARGS="$ARGS -b /proc/self/fd/2:/dev/stderr"
 fi
 
-
 ARGS="$ARGS -b $PREFIX"
 ARGS="$ARGS -b /sys"
 
@@ -92,4 +106,4 @@ ARGS="$ARGS --link2symlink"
 ARGS="$ARGS --sysvipc"
 ARGS="$ARGS -L"
 
-$LINKER $PREFIX/local/bin/proot $ARGS sh $PREFIX/local/bin/init "$@"
+$LINKER $PREFIX/local/bin/proot $ARGS sh $PREFIX/local/bin/init-alpine "$@"

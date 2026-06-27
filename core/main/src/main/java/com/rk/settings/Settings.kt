@@ -6,7 +6,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import androidx.appcompat.app.AppCompatDelegate
 import com.rk.libcommons.application
-import com.rk.terminal.ui.screens.settings.WorkingMode
+import com.rk.terminal.Globals  // ★ ★ ★ WICHTIG ★ ★ ★
 import com.rk.terminal.ui.screens.settings.InputMode
 
 object Settings {
@@ -43,8 +43,9 @@ object Settings {
         get() = Preference.getFloat(key = "wallTransparency", default = 0f)
         set(value) = Preference.setFloat(key = "wallTransparency",value)
 
+    // ★ ★ ★ WORKING_MODE MIT GLOBALS ★ ★ ★
     var working_Mode
-        get() = Preference.getInt(key = "workingMode", default = WorkingMode.ALPINE)
+        get() = Preference.getInt(key = "workingMode", default = Globals.WORKING_MODE_ALPINE)
         set(value) = Preference.setInt(key = "workingMode",value)
 
     var input_mode
@@ -106,8 +107,6 @@ object Settings {
     fun setShortcutBinding(action: com.rk.terminal.ui.screens.terminal.ShortcutAction, binding: com.rk.terminal.ui.screens.terminal.ShortcutBinding) {
         Preference.setString(key = action.prefKey, value = binding.serialize())
     }
-
-
 
 }
 

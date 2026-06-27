@@ -21,7 +21,10 @@ export PIP_BREAK_SYSTEM_PACKAGES=1
 if [ -f "$ALPINE_FLAG" ]; then
     echo "✅ Alpine bereits installiert (Flag gefunden in $ALPINE_DIR)"
 else
-
+    # ============================================================
+    # ALPINE INSTALLATION (nur beim ersten Mal)
+    # ============================================================
+    
     # ============================================================
     # DNS Einrichten / Domain 
     # ============================================================
@@ -31,52 +34,39 @@ else
         echo "nameserver 8.8.8.8" > /etc/resolv.conf
     fi
     
-    echo "📦 Erste Installation - Ubuntu wird eingerichtet..."
+    echo "📦 Erste Installation - Alpine wird eingerichtet..."
     
     # ============================================================
-    # PAKETE INSTALLIEREN (apt statt apk)
+    # PAKETE INSTALLIEREN (bleibt wie gehabt)
     # ============================================================
     
-    # apt update (erstes Mal)
-    echo "🔄 Aktualisiere Paketquellen..."
-    apt update
-    
-    # Benötigte Pakete für Ubuntu
-    required_packages="bash openssh-server sshpass pure-ftpd python3 python3-pip python3-venv nano curl wget git sudo"
-    
-    # Prüfen ob Pakete installiert sind (dpkg -s)
+    required_packages="bash gcompat glib nano python3 py3-pip openssh sshpass pure-ftpd "
     missing_packages=""
     for pkg in $required_packages; do 
-        if ! dpkg -s $pkg >/dev/null 2>&1; then
+        if ! apk info -e $pkg >/dev/null 2>&1; then
             missing_packages="$missing_packages $pkg"
         fi
     done
     
     if [ -n "$missing_packages" ]; then
         echo -e "\e[34;1m[*] \e[0mInstalliere Pakete: $missing_packages\e[0m"
-        apt install -y $missing_packages
+        apk update && apk upgrade
+        apk add $missing_packages
         if [ $? -eq 0 ]; then
             echo -e "\e[32;1m[+] \e[0mErfolgreich installiert\e[0m"
         fi
-        echo -e "\e[34m[*] \e[0mNutze \e[32mapt\e[0m um Pakete zu installieren\e[0m"
+        echo -e "\e[34m[*] \e[0mNutze \e[32mapk\e[0m um Pakete zu installieren\e[0m"
     fi
     
     # ============================================================
     # BENUTZER 'test' ERSTELLEN
     # ============================================================
+
     if ! id -u test > /dev/null 2>&1; then
-        useradd -m -s /bin/bash test
+        adduser -D -h /home/test test
         echo "test:alpine" | chpasswd
         echo -e "\e[32;1m[+] \e[0mBenutzer 'test' erstellt\e[0m"
     fi
-    
-    # ============================================================
-    # test ZU SUDOERS HINZUFÜGEN
-    # ============================================================
-    if ! grep -q "^test " /etc/sudoers; then
-        echo "test ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-    fi
-    
     
     # ============================================================
     # PROMPT FÜR BENUTZER 'test' IN .profile
@@ -101,6 +91,7 @@ EOF
     # ============================================================
     # SSH EINRICHTEN
     # ============================================================
+    
     if [ -f /etc/ssh/sshd_config ]; then
         if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
             ssh-keygen -A
@@ -114,20 +105,14 @@ ListenAddress 0.0.0.0
 AllowUsers test
 EOF
         
-        echo -e "\e[32;1m[+] \e[0msshd_config angepasst!\e[0m"
+        echo -e "\e[32;1m[+] \e[0mFile sshd_conifg eingefuegt !\e[0m"
+    
     else
-        echo "❌ /etc/ssh/sshd_config nicht vorhanden!"
+        echo "❌ file etc/ssh/sshd_confug nicht vorhanden!! "
     fi
     
-    # Root Passwort (optional)
+    # Root Passwort (optional, falls du root lokal brauchst)
     echo "root:alpine" | chpasswd
-    
-    
-    # ============================================================
-    # SSH-Dienst starten (für Ubuntu)
-    # ============================================================
-    mkdir -p /run/sshd
-    
     
     # ============================================================
     # App Ordner erstellen wenn nicht existiert
@@ -245,8 +230,10 @@ EOF
         # flag setzen
         touch "$ALPINE_FLAG"
         echo -e "\e[32;1m[✓] \e[0mAlpine Installation abgeschlossen. Flag gesetzt: $ALPINE_FLAG"
+        #verzeichnis auf ~
+        cd $HOME
     fi
 fi
 
 # Shell .prolie ausgefuhrt
-exec /bin/bash -l
+/bin/ash -l

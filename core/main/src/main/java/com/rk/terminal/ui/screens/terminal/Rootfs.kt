@@ -19,6 +19,8 @@ object Rootfs {
     }
 
     val reTerminal = application!!.filesDir
+    val localDir = File(reTerminal.parentFile, "local")
+    
 
     init {
         showLog("Info", "🔍 Initialisiere Rootfs...")
@@ -54,7 +56,7 @@ object Rootfs {
     fun getWorkingDir(): String {
         return when {
             Globals.isAndroid() -> "/sdcard"
-            Globals.isUbuntu() -> "/home/test"
+            //Globals.isUbuntu() -> "/home/test"
             else -> "/home/test"  // Alpine
         }
     }

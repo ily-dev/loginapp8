@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
+import android.os.Build
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
@@ -78,6 +79,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
@@ -95,7 +97,6 @@ import com.rk.settings.Settings
 import com.rk.terminal.ui.activities.terminal.MainActivity
 import com.rk.terminal.ui.routes.MainActivityRoutes
 import com.rk.terminal.ui.screens.settings.SettingsCard
-import com.rk.terminal.ui.screens.settings.WorkingMode
 import com.rk.terminal.ui.screens.terminal.virtualkeys.VirtualKeysConstants
 import com.rk.terminal.ui.screens.terminal.virtualkeys.VirtualKeysInfo
 import com.rk.terminal.ui.screens.terminal.virtualkeys.VirtualKeysListener
@@ -103,9 +104,9 @@ import com.rk.terminal.ui.screens.terminal.virtualkeys.VirtualKeysView
 import com.termux.terminal.TerminalColors
 import com.termux.view.TerminalView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -117,10 +118,7 @@ import java.util.Properties
 
 // ★ ★ ★ GLOBALS IMPORT ★ ★ ★
 import com.rk.terminal.Globals
-// TerminalScreen.kt - Oben hinzufügen
 import android.content.Intent
-import androidx.compose.ui.unit.sp
-import android.os.Build
 
 // ============================================================
 // ★ BESTEHENDE VARIABLEN
@@ -175,7 +173,9 @@ private data class DownloadFile(val url: String, val outputFile: File)
 private data class AssetFiles(
     val privateTar: String,
     val ubuntuTar: String,
-    val alpineTar: String
+    val alpineTar: String,
+    val remAlpine: String,
+    val remUbuntu: String
 )
 
 private data class AbiUrls(
@@ -197,17 +197,23 @@ private val assetFilesMap = mapOf(
     "x86_64" to AssetFiles(
         privateTar = "private.tar",
         ubuntuTar = "ubuntu/ubuntu.tar",
-        alpineTar = "alpine/alpine.tar"
+        alpineTar = "alpine/alpine.tar",
+        remAlpine = "alpine/rem_alpine5.sh",
+        remUbuntu = "ubuntu/rem_ubuntu2.sh"
     ),
     "arm64-v8a" to AssetFiles(
         privateTar = "private.tar",
         ubuntuTar = "ubuntu/ubuntu.tar",  
-        alpineTar = "alpine/alpine.tar"
+        alpineTar = "alpine/alpine.tar",
+        remAlpine = "alpine/rem_alpine5.sh",
+        remUbuntu = "ubuntu/rem_ubuntu2.sh"
     ),
     "armeabi-v7a" to AssetFiles(
         privateTar = "private.tar",
         ubuntuTar = "ubuntu/ubuntu.tar",
-        alpineTar = "alpine/alpine.tar"
+        alpineTar = "alpine/alpine.tar",
+        remAlpine = "alpine/rem_alpine5.sh",
+        remUbuntu = "ubuntu/rem_ubuntu2.sh"
     )
 )
 
@@ -314,11 +320,26 @@ suspend fun runDownloaderSetup(
         val filesToCopy = listOf(
             "private.tar" to assetFilesMap[abi]!!.privateTar,
             "ubuntu.tar.gz" to assetFilesMap[abi]!!.ubuntuTar,
-            "alpine.tar.gz" to assetFilesMap[abi]!!.alpineTar
+            "alpine.tar.gz" to assetFilesMap[abi]!!.alpineTar,
+            "rem_alpine.sh" to assetFilesMap[abi]!!.remAlpine,
+            "rem_ubuntu.sh" to assetFilesMap[abi]!!.remUbuntu
         ).mapNotNull { (name, assetPath) -> 
             try {
                 context.assets.open(assetPath).close()
-                CopyFile(assetPath, Rootfs.reTerminal.child(name))
+                
+                // ★ ★ ★ Entscheide Zielverzeichnis ★ ★ ★
+                val targetFile = when (name) {
+                    "rem_alpine.sh", "rem_ubuntu.sh" -> {
+                        // In local Verzeichnis kopieren
+                        Rootfs.localDir.child(name)
+                    }
+                    else -> {
+                        // In reTerminal (files) Verzeichnis kopieren
+                        Rootfs.reTerminal.child(name)
+                    }
+                }
+                
+                CopyFile(assetPath, targetFile)
             } catch (e: IOException) {
                 Globals.showLog("TerminalScreen", "⚠️ $assetPath nicht in Assets")
                 onProgress(0.15f, "⚠️ $assetPath nicht in Assets")
@@ -423,8 +444,8 @@ suspend fun runDownloaderSetup(
         Globals.showLog("TerminalScreen", "✅ Setup abgeschlossen!")
         
         // ★ ★ ★ Globals für Delay ★ ★ ★
-        val delayMs = Globals.DIALOG_DELAY.toLong()
-        delay(delayMs)
+        //val delayMs = Globals.DIALOG_DELAY.toLong()
+        delay(300)
         
         onComplete(true)
 
@@ -441,19 +462,20 @@ suspend fun runDownloaderSetup(
 }
 
 // ============================================================
-// ★ HELPER-FUNKTIONEN
+// ★ HELPER-FUNKTIONEN (MIT GLOBALS WORKING MODE)
 // ============================================================
 fun getNameOfWorkingMode(workingMode: Int?): String {
     return when (workingMode) {
-        0 -> "ALPINE".lowercase()
-        1 -> "ANDROID".lowercase()
+        Globals.WORKING_MODE_ALPINE -> "ALPINE"
+        Globals.WORKING_MODE_UBUNTU -> "UBUNTU"
+        Globals.WORKING_MODE_ANDROID -> "ANDROID"
         null -> "null"
         else -> "unknown"
     }
 }
 
 // ============================================================
-// ★ TERMINALSCREEN (mit Globals)
+// ★ TERMINALSCREEN (mit Globals + Ubuntu Dialog)
 // ============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -478,6 +500,7 @@ fun TerminalScreen(
         Globals.showLog("TerminalScreen", "🖥️ TerminalScreen gestartet")
         Globals.showLog("TerminalScreen", "📌 Rootfs: ${Globals.ROOTFS_TYPE}")
         Globals.showLog("TerminalScreen", "📌 Init: ${Globals.INIT_SCRIPT}")
+        Globals.showLog("TerminalScreen", "📌 WorkingDir: ${Rootfs.getWorkingDir()}")
     }
 
     // ★ DOWNLOADER STARTEN
@@ -562,14 +585,15 @@ fun TerminalScreen(
             SetStatusBarTextColor(isDarkIcons = !isDarkMode)
         }
 
-        // ★ DIALOG (nur im Terminal-Modus)
+        // ★ ★ ★ ERWEITERTER DIALOG MIT UBUNTU ★ ★ ★
         if (showAddDialog && Rootfs.isDownloaded.value){
             BasicAlertDialog(
                 onDismissRequest = {
+                    Globals.showLog("TerminalScreen", "➕ Dialog geschlossen")
                     showAddDialog = false
                 }
             ) {
-                fun createSession(workingMode:Int){
+                fun createSession(workingMode: Int) {
                     fun generateUniqueString(existingStrings: List<String>): String {
                         var index = 1
                         var newString: String
@@ -580,7 +604,18 @@ fun TerminalScreen(
                         return newString
                     }
 
-                    val sessionId = generateUniqueString(mainActivityActivity.sessionBinder!!.getService().sessionList.keys.toList())
+                    val sessionId = generateUniqueString(
+                        mainActivityActivity.sessionBinder!!.getService().sessionList.keys.toList()
+                    )
+
+                    val modeName = when (workingMode) {
+                        Globals.WORKING_MODE_ALPINE -> "Alpine"
+                        Globals.WORKING_MODE_UBUNTU -> "Ubuntu"
+                        Globals.WORKING_MODE_ANDROID -> "Android"
+                        else -> "Unknown"
+                    }
+
+                    Globals.showLog("TerminalScreen", "📝 Erstelle neue $modeName Session: $sessionId")
 
                     terminalView.get()
                         ?.let {
@@ -588,28 +623,57 @@ fun TerminalScreen(
                             mainActivityActivity.sessionBinder!!.createSession(
                                 sessionId,
                                 client,
-                                mainActivityActivity, workingMode = workingMode
+                                mainActivityActivity,
+                                workingMode = workingMode
+                                
                             )
+                            showLog("TerminalScreen", "workingMode: " + workingMode)
                         }
                     changeSession(mainActivityActivity, session_id = sessionId)
+                    Globals.showLog("TerminalScreen", "✅ Session $sessionId erstellt ($modeName)")
+                    showAddDialog = false
                 }
 
                 PreferenceGroup {
+                    // ★ ★ ★ 1. Alpine Option ★ ★ ★
                     SettingsCard(
-                        title = { Text("Alpine") },
-                        description = {Text(stringResource(strings.alpine_desc))},
+                        title = { Text("🐧 Alpine Linux") },
+                        description = { Text("Leichtes Linux mit apk Paketmanager") },
                         onClick = {
-                           createSession(workingMode = WorkingMode.ALPINE)
-                            showAddDialog = false
-                        })
+                            Globals.showLog("TerminalScreen", "🐧 Alpine Session ausgewählt")
+                            Globals.setAlpine()
+                            //Globals.WORKING_MODE = Globals.WORKING_MODE_ALPINE
+                            //Globals.ROOTFS_TYPE = "alpine"
+                            createSession(workingMode = Globals.WORKING_MODE_ALPINE)
+                        }
+                    )
 
+                    // ★ ★ ★ 2. Ubuntu Option ★ ★ ★
                     SettingsCard(
-                        title = { Text("Android") },
-                        description = {Text(stringResource(strings.android_desc))},
+                        title = { Text("🐧 Ubuntu Linux") },
+                        description = { Text("Vollständiges Linux mit apt Paketmanager") },
                         onClick = {
-                            createSession(workingMode = WorkingMode.ANDROID)
-                            showAddDialog = false
-                        })
+                            Globals.showLog("TerminalScreen", "🐧 Ubuntu Session ausgewählt")
+                            Globals.setUbuntu()
+                            //Globals.WORKING_MODE = Globals.WORKING_MODE_UBUNTU
+                            //Globals.ROOTFS_TYPE = "ubuntu"
+                            
+                            createSession(workingMode = Globals.WORKING_MODE_UBUNTU)
+                        }
+                    )
+
+                    // ★ ★ ★ 3. Android Option ★ ★ ★
+                    SettingsCard(
+                        title = { Text("📟 Android Shell") },
+                        description = { Text("Native Android Shell (ohne Rootfs)") },
+                        onClick = {
+                            Globals.showLog("TerminalScreen", "📟 Android Session ausgewählt")
+                            Globals.WORKING_MODE = Globals.WORKING_MODE_ANDROID
+                            Globals.ROOTFS_TYPE = "android"
+                            
+                            createSession(workingMode = Globals.WORKING_MODE_ANDROID)
+                        }
+                    )
                 }
             }
         }
@@ -715,7 +779,7 @@ fun TerminalScreen(
                     BackgroundImage()
                     val color = getComposeColor()
                     Column {
-                        // ★ ★ ★ TOPAPPBAR MIT GLOBALS ★ ★ ★
+                        // ★ ★ ★ TOPAPPBAR MIT GLOBALS & WORKINGDIR ★ ★ ★
                         if (showToolbar.value && (LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE || showHorizontalToolbar.value)){
                             TopAppBar(
                                 colors = TopAppBarDefaults.topAppBarColors(
@@ -726,6 +790,8 @@ fun TerminalScreen(
                                     Column {
                                         // ★ ★ ★ Globals für Rootfs-Anzeige ★ ★ ★
                                         val rootfsType = Globals.getRootfsDisplayName()
+                                        val workingDir = Rootfs.getWorkingDir()
+                                        
                                         Text(
                                             text = if (Rootfs.isDownloaded.value) "ReTerminal ($rootfsType)" else "Downloader",
                                             color = color
@@ -734,7 +800,7 @@ fun TerminalScreen(
                                             style = MaterialTheme.typography.bodySmall,
                                             text = if (Rootfs.isDownloaded.value) {
                                                 val sessionText = mainActivityActivity.sessionBinder?.getService()?.currentSession?.value?.first ?: ""
-                                                "$sessionText (${rootfsType})"
+                                                "$sessionText (${rootfsType}) - ${Rootfs.getWorkingDirDisplay()}"
                                             } else {
                                                 Globals.ROOTFS_FILE
                                             },
@@ -755,9 +821,10 @@ fun TerminalScreen(
                                         IconButton(onClick = {
                                             Globals.showLog("TerminalScreen", "📊 Status: ${Rootfs.isDownloaded.value}")
                                             Globals.showLog("TerminalScreen", "📌 Rootfs: ${Globals.ROOTFS_TYPE}")
+                                            Globals.showLog("TerminalScreen", "📌 WorkingDir: ${Rootfs.getWorkingDir()}")
                                         }) {
                                             Text(
-                                                text = " 🔄  ",        // Oder "🔄", "🐍", "🤖", "📌"
+                                                text = " 🔄  ",
                                                 fontSize = 24.sp,
                                                 color = color
                                             )
@@ -765,7 +832,7 @@ fun TerminalScreen(
                                     }
                                     
                                     if (Rootfs.isDownloaded.value) {
-                                        // ★ Python-Button (mit Globals für Timeout)
+                                        // ★ Python-Button
                                         IconButton(
                                             onClick = {
                                                 Globals.showLog("TerminalScreen", "🐍 Python-Button gedrückt!")

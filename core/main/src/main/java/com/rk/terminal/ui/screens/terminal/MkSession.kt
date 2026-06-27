@@ -1,8 +1,9 @@
 package com.rk.terminal.ui.screens.terminal
 
 import android.os.Environment
-import com.rk.libcommons.alpineDir
+//import com.rk.libcommons.alpineDir
 import com.rk.libcommons.alpineHomeDir
+import com.rk.libcommons.ubuntuHomeDir
 import com.rk.libcommons.application
 import com.rk.libcommons.child
 import com.rk.libcommons.createFileIfNot
@@ -15,13 +16,12 @@ import com.rk.terminal.App
 import com.rk.terminal.App.Companion.getTempDir
 import com.rk.terminal.BuildConfig
 import com.rk.terminal.ui.activities.terminal.MainActivity
-import com.rk.terminal.ui.screens.settings.WorkingMode
+import com.rk.terminal.Globals
 import com.termux.terminal.TerminalEmulator
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import java.io.File
 import java.io.FileOutputStream
-import com.rk.terminal.Globals
 
 object MkSession {
     
@@ -64,17 +64,28 @@ object MkSession {
             // ============================================================
             val workingDir = when {
                 pendingCommand?.workingDir != null -> pendingCommand!!.workingDir
+                
+                Globals.isUbuntu() -> ubuntuHomeDir().path // Ubuntu: /root
+                
+                Globals.isAlpine() -> alpineHomeDir().path
+                
                 Globals.isAndroid() -> "/sdcard"  // Android Shell: SD-Karte
-                Globals.isUbuntu() -> "/home/test"  // Ubuntu: /home/test
-                else -> alpineHomeDir().path  // Alpine: /home/test
+                
+                else -> ubuntuHomeDir().path  // Alpine: /root
             }
+            val ubuntuPath = ubuntuHomeDir().path
             showLog("Debug", "📁 WorkingDir: $workingDir")
             showLog("Debug", "📌 WorkingMode: ${Globals.getWorkingModeName()}")
+            
+            
 
             // ============================================================
             // INIT-HOST FILE (nur für Alpine/Ubuntu)
             // ============================================================
-            val initFile: File = localBinDir().child("init-host")
+            val initFileAlpine: File = localBinDir().child("init-host-alpine")
+            val initFileUbuntu: File = localBinDir().child("init-host-ubuntu")
+            
+            /*
 
             if (!Globals.isAndroid()) {
                 if (initFile.exists().not()) {
@@ -104,6 +115,7 @@ object MkSession {
             } else {
                 showLog("Info", "📟 Android-Modus: Keine init-Skripte benötigt")
             }
+            */
 
             // ============================================================
             // ENVIRONMENT VARIABLES
@@ -125,7 +137,12 @@ object MkSession {
                 "RISH_APPLICATION_ID=${packageName}",
                 "PKG_PATH=${applicationInfo.sourceDir}",
                 "PROOT_TMP_DIR=${getTempDir().child(session_id).also { if (it.exists().not()){it.mkdirs()} }}",
-                "TMPDIR=${getTempDir().absolutePath}"
+                "TMPDIR=${getTempDir().absolutePath}",
+                "SSHD_PORT=${Globals.SSHD_PORT}",
+                "SSHD_ENABLED=${Globals.SSHD_ENABLED}",
+                "FTP_PORT=${Globals.FTP_PORT}",
+                "FTP_ENABLED=${Globals.FTP_ENABLED}"
+                
             )
 
             showLog("Debug", "🔧 ${env.size} Environment-Variablen gesetzt")
@@ -184,12 +201,12 @@ object MkSession {
                 when (Globals.WORKING_MODE) {
                     Globals.WORKING_MODE_ALPINE -> {
                         showLog("Info", "🐧 Starte Alpine Linux mit init-host")
-                        args = arrayOf("-c", initFile.absolutePath)
+                        args = arrayOf("-c", initFileAlpine.absolutePath)
                         "/system/bin/sh"
                     }
                     Globals.WORKING_MODE_UBUNTU -> {
                         showLog("Info", "🐧 Starte Ubuntu Linux mit init-host")
-                        args = arrayOf("-c", initFile.absolutePath)
+                        args = arrayOf("-c", initFileUbuntu.absolutePath)
                         "/system/bin/sh"
                     }
                     Globals.WORKING_MODE_ANDROID -> {
@@ -199,21 +216,23 @@ object MkSession {
                     }
                     else -> {
                         showLog("Warn", "⚠️ Unbekannter WorkingMode: ${Globals.WORKING_MODE}, verwende Alpine")
-                        args = arrayOf("-c", initFile.absolutePath)
+                        args = arrayOf()
                         "/system/bin/sh"
                     }
                 }
             } else {
+                //args = pendingCommand!!.args
+                //val cmdShell = pendingCommand!!.shell
+                //showLog("Info", "📟 Starte mit Pending-Command: $cmdShell ${args.joinToString(" ")}")
+                //cmdShell
                 args = pendingCommand!!.args
-                val cmdShell = pendingCommand!!.shell
-                showLog("Info", "📟 Starte mit Pending-Command: $cmdShell ${args.joinToString(" ")}")
-                cmdShell
+                pendingCommand!!.shell
             }
 
             pendingCommand = null
 
             showLog("Info", "✅ Session erstellt: shell=$shell, workingDir=$workingDir")
-            showLog("Info", "📌 WorkingMode: ${Globals.getWorkingModeName()}")
+            showLog("Info", "📋 WorkingMode: ${Globals.getWorkingModeName()}")
             showLog("Debug", "📋 Args: ${args.joinToString(" ")}")
             showLog("Debug", "📋 Env: ${env.joinToString(" ")}")
 

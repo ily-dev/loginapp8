@@ -45,7 +45,7 @@ class TerminalBackEnd(val terminal: TerminalView, val activity: MainActivity) : 
     
     override fun onTextChanged(changedSession: TerminalSession) {
         terminal.onScreenUpdated()
-        showLog("Debug", "📝 Text geändert in Session: ${changedSession}")
+        //showLog("Debug", "📝 Text geändert in Session: ${changedSession}")
     }
     
     override fun onTitleChanged(changedSession: TerminalSession) {

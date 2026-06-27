@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.view.LayoutInflater
-import android.widget.Button
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -23,12 +21,10 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import androidx.navigation.NavController
 import com.rk.components.compose.preferences.base.PreferenceGroup
@@ -41,6 +37,7 @@ import com.rk.terminal.ui.activities.terminal.MainActivity
 import com.rk.terminal.ui.components.SettingsToggle
 import com.rk.terminal.ui.routes.MainActivityRoutes
 import com.rk.terminal.Globals
+import kotlinx.coroutines.*
 
 // ============================================================
 // ★ LOKALE SHOWLOG FUNKTION
@@ -99,6 +96,122 @@ fun moveTerminalToBackContext(context: Context) {
 }
 
 // ============================================================
+// ★ BACKUP FUNKTIONEN
+// ============================================================
+private fun runBackupScript(context: Context, scriptName: String, onComplete: (Boolean, String) -> Unit) {
+    val scriptPath = "${context.filesDir.parent}/local/$scriptName"
+    
+    showLog("Backup", "📝 Starte Backup-Script: $scriptName")
+    
+    // Coroutine für Hintergrundausführung
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            // 1. chmod +x
+            val chmod = Runtime.getRuntime().exec(arrayOf("chmod", "+x", scriptPath))
+            chmod.waitFor()
+            showLog("Backup", "✅ chmod +x erfolgreich")
+            
+            // 2. Script ausführen
+            val process = Runtime.getRuntime().exec(arrayOf(scriptPath, "--full"))
+            
+            // Output lesen
+            val reader = process.inputStream.bufferedReader()
+            val output = StringBuilder()
+            reader.useLines { lines ->
+                lines.forEach { 
+                    output.appendLine(it)
+                    showLog("Backup", it)
+                }
+            }
+            
+            val errorReader = process.errorStream.bufferedReader()
+            val errorOutput = StringBuilder()
+            errorReader.useLines { lines ->
+                lines.forEach { 
+                    errorOutput.appendLine(it)
+                    showLog("Backup", "❌ $it")
+                }
+            }
+            
+            val exitCode = process.waitFor()
+            showLog("Backup", "📊 Exit Code: $exitCode")
+            
+            if (exitCode == 0) {
+                withContext(Dispatchers.Main) {
+                    onComplete(true, "✅ Backup erfolgreich erstellt!\n$output")
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    onComplete(false, "❌ Backup fehlgeschlagen (Exit: $exitCode)\n$errorOutput")
+                }
+            }
+            
+        } catch (e: Exception) {
+            showLog("Backup", "❌ Fehler: ${e.message}")
+            withContext(Dispatchers.Main) {
+                onComplete(false, "❌ Fehler: ${e.message}")
+            }
+        }
+    }
+}
+
+private fun runRestoreScript(context: Context, scriptName: String, onComplete: (Boolean, String) -> Unit) {
+    val scriptPath = "${context.filesDir.parent}/local/$scriptName"
+    
+    showLog("Restore", "📝 Starte Restore-Script: $scriptName")
+    
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            // 1. chmod +x
+            val chmod = Runtime.getRuntime().exec(arrayOf("chmod", "+x", scriptPath))
+            chmod.waitFor()
+            showLog("Restore", "✅ chmod +x erfolgreich")
+            
+            // 2. Script ausführen (mit --restore)
+            val process = Runtime.getRuntime().exec(arrayOf(scriptPath, "--restore"))
+            
+            // Output lesen
+            val reader = process.inputStream.bufferedReader()
+            val output = StringBuilder()
+            reader.useLines { lines ->
+                lines.forEach { 
+                    output.appendLine(it)
+                    showLog("Restore", it)
+                }
+            }
+            
+            val errorReader = process.errorStream.bufferedReader()
+            val errorOutput = StringBuilder()
+            errorReader.useLines { lines ->
+                lines.forEach { 
+                    errorOutput.appendLine(it)
+                    showLog("Restore", "❌ $it")
+                }
+            }
+            
+            val exitCode = process.waitFor()
+            showLog("Restore", "📊 Exit Code: $exitCode")
+            
+            if (exitCode == 0) {
+                withContext(Dispatchers.Main) {
+                    onComplete(true, "✅ Restore erfolgreich!\n$output")
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    onComplete(false, "❌ Restore fehlgeschlagen (Exit: $exitCode)\n$errorOutput")
+                }
+            }
+            
+        } catch (e: Exception) {
+            showLog("Restore", "❌ Fehler: ${e.message}")
+            withContext(Dispatchers.Main) {
+                onComplete(false, "❌ Fehler: ${e.message}")
+            }
+        }
+    }
+}
+
+// ============================================================
 // ★ SETTINGS CARD
 // ============================================================
 @OptIn(ExperimentalFoundationApi::class)
@@ -134,7 +247,7 @@ fun SettingsCard(
 }
 
 // ============================================================
-// ★ WORKING MODE & INPUT MODE
+// ★ INPUT MODE
 // ============================================================
 object InputMode {
     const val DEFAULT = 0
@@ -150,9 +263,20 @@ object InputMode {
 fun Settings(modifier: Modifier = Modifier, navController: NavController, mainActivity: MainActivity) {
     val context = LocalContext.current
     var selectedInputMode by remember { mutableIntStateOf(Settings.input_mode) }
-    
-    // ★ ★ ★ Globals WorkingMode ★ ★ ★
     var selectedWorkingMode by remember { mutableIntStateOf(Globals.WORKING_MODE) }
+    
+    // States für Backup/Toast
+    var toastMessage by remember { mutableStateOf<String?>(null) }
+    var isBackupRunning by remember { mutableStateOf(false) }
+    var isRestoreRunning by remember { mutableStateOf(false) }
+    
+    // Toast anzeigen
+    LaunchedEffect(toastMessage) {
+        toastMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            toastMessage = null
+        }
+    }
 
     showLog("Info", "⚙️ Settings Screen geöffnet")
     showLog("Debug", "⚙️ WorkingMode: ${Globals.getWorkingModeName()} (${Globals.WORKING_MODE})")
@@ -230,6 +354,108 @@ fun Settings(modifier: Modifier = Modifier, navController: NavController, mainAc
                     Settings.working_Mode = selectedWorkingMode
                     showLog("Info", "📟 WorkingMode geändert zu: ANDROID (via Click)")
                 })
+        }
+
+        // ============================================================
+        // ★ ★ ★ BACKUP LINUX DISTRIBUTION ★ ★ ★
+        // ============================================================
+        PreferenceGroup(heading = "Backup Linux distribution") {
+            
+            // ★ Alpine Backup
+            SettingsCard(
+                title = { Text("💾 Alpine Backup erstellen") },
+                description = { Text("Erstellt ein Backup von Alpine Linux (rem_alpine.sh)") },
+                isEnabled = !isBackupRunning,
+                onClick = {
+                    if (!isBackupRunning) {
+                        isBackupRunning = true
+                        toastMessage = "📦 Alpine Backup wird erstellt... (bitte warten)"
+                        showLog("Backup", "📦 Alpine Backup starten...")
+                        
+                        runBackupScript(context, "rem_alpine.sh") { success, message ->
+                            isBackupRunning = false
+                            toastMessage = if (success) {
+                                "✅ Alpine Backup erfolgreich! /sdcard/alpine_custom_*.tar.gz"
+                            } else {
+                                "❌ Alpine Backup fehlgeschlagen: $message"
+                            }
+                            showLog("Backup", if (success) "✅ Backup erfolgreich" else "❌ Backup fehlgeschlagen")
+                        }
+                    }
+                }
+            )
+            
+            // ★ Ubuntu Backup
+            SettingsCard(
+                title = { Text("💾 Ubuntu Backup erstellen") },
+                description = { Text("Erstellt ein Backup von Ubuntu Linux (rem_ubuntu.sh)") },
+                isEnabled = !isBackupRunning,
+                onClick = {
+                    if (!isBackupRunning) {
+                        isBackupRunning = true
+                        toastMessage = "📦 Ubuntu Backup wird erstellt... (bitte warten)"
+                        showLog("Backup", "📦 Ubuntu Backup starten...")
+                        
+                        runBackupScript(context, "rem_ubuntu.sh") { success, message ->
+                            isBackupRunning = false
+                            toastMessage = if (success) {
+                                "✅ Ubuntu Backup erfolgreich! /sdcard/ubuntu_custom_*.tar.gz"
+                            } else {
+                                "❌ Ubuntu Backup fehlgeschlagen: $message"
+                            }
+                            showLog("Backup", if (success) "✅ Backup erfolgreich" else "❌ Backup fehlgeschlagen")
+                        }
+                    }
+                }
+            )
+            
+            // ★ Alpine Restore
+            SettingsCard(
+                title = { Text("🔄 Alpine Restore") },
+                description = { Text("Stellt Alpine Linux aus Backup wieder her") },
+                isEnabled = !isRestoreRunning,
+                onClick = {
+                    if (!isRestoreRunning) {
+                        isRestoreRunning = true
+                        toastMessage = "🔄 Alpine Restore wird durchgeführt... (bitte warten)"
+                        showLog("Restore", "🔄 Alpine Restore starten...")
+                        
+                        runRestoreScript(context, "rem_alpine.sh") { success, message ->
+                            isRestoreRunning = false
+                            toastMessage = if (success) {
+                                "✅ Alpine Restore erfolgreich!"
+                            } else {
+                                "❌ Alpine Restore fehlgeschlagen: $message"
+                            }
+                            showLog("Restore", if (success) "✅ Restore erfolgreich" else "❌ Restore fehlgeschlagen")
+                        }
+                    }
+                }
+            )
+            
+            // ★ Ubuntu Restore
+            SettingsCard(
+                title = { Text("🔄 Ubuntu Restore") },
+                description = { Text("Stellt Ubuntu Linux aus Backup wieder her") },
+                isEnabled = !isRestoreRunning,
+                onClick = {
+                    if (!isRestoreRunning) {
+                        isRestoreRunning = true
+                        toastMessage = "🔄 Ubuntu Restore wird durchgeführt... (bitte warten)"
+                        showLog("Restore", "🔄 Ubuntu Restore starten...")
+                        
+                        runRestoreScript(context, "rem_ubuntu.sh") { success, message ->
+                            isRestoreRunning = false
+                            toastMessage = if (success) {
+                                "✅ Ubuntu Restore erfolgreich!"
+                            } else {
+                                "❌ Ubuntu Restore fehlgeschlagen: $message"
+                            }
+                            showLog("Restore", if (success) "✅ Restore erfolgreich" else "❌ Restore fehlgeschlagen")
+                        }
+                    }
+                }
+            )
         }
 
         // ============================================================

@@ -32,8 +32,24 @@ fun alpineDir(): File{
     }
 }
 
+fun ubuntuDir(): File{
+    return localDir().child("ubuntu").also {
+        if (!it.exists()) {
+            it.mkdirs()
+        }
+    }
+}
+
 fun alpineHomeDir(): File{
     return alpineDir().child("root").also {
+        if (!it.exists()) {
+            it.mkdirs()
+        }
+    }
+}
+
+fun ubuntuHomeDir(): File{
+    return ubuntuDir().child("root").also {
         if (!it.exists()) {
             it.mkdirs()
         }

@@ -41,10 +41,13 @@ class App : Application() {
             return tmp
         }
     }
+    
 
     @OptIn(DelicateCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
+        
+        Globals.init(this)
         
         showLog("Info", "🚀 App onCreate gestartet")
         showLog("Debug", "📱 SDK: ${Build.VERSION.SDK_INT}, Device: ${Build.MODEL}")

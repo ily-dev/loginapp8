@@ -6,15 +6,11 @@
 APP_DATA_DIR=$PREFIX
 ALPINE_DIR="$APP_DATA_DIR/local/alpine"
 ALPINE_FLAG="$ALPINE_DIR/.alpine_installed"
-PYTHON_APP_DIR="$APP_DATA_DIR/files/app"
-PYTHON_APP_MAIN="$PYTHON_APP_DIR/main.pyc"
-TARFILE="$APP_DATA_DIR/files/private.tar"
 
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin:/system/bin:/system/xbin
 export HOME=/root
 export PS1="\[\e[38;5;46m\]\u\[\033[39m\]@reterm \[\033[39m\]\w \[\033[0m\]\\$ "
 export PIP_BREAK_SYSTEM_PACKAGES=1
-    
 # =======================================
 # PRÜFUNG OB ALPINE BEREITS INSTALLIERT IST (über FLAG)
 # =======================================
@@ -24,7 +20,6 @@ else
     # ============================================================
     # ALPINE INSTALLATION (nur beim ersten Mal)
     # ============================================================
-    
     
     # ============================================================
     # DNS Einrichten / Domain 
@@ -41,7 +36,7 @@ else
     # PAKETE INSTALLIEREN (bleibt wie gehabt)
     # ============================================================
     
-    required_packages="bash gcompat glib nano python3 py3-pip openssh sshpass pure-ftpd "
+    required_packages="bash gcompat glib nano python3 py3-pip openssh sshpass pure-ftpd nmap "
     missing_packages=""
     for pkg in $required_packages; do 
         if ! apk info -e $pkg >/dev/null 2>&1; then
@@ -92,57 +87,37 @@ EOF
     # ============================================================
     # SSH EINRICHTEN
     # ============================================================
+    echo "# ==============================="
+    echo "SSHD_PORT: $SSHD_PORT"
+    echo "SSHD_ENABLED: $SSHD_ENABLED"
+    echo "FTP_PORT: $FTP_PORT"
+    echo "FTP_ENABLED: $FTP_ENABLED"
+    echo "# ==============================="
     
-    if [ -f /etc/ssh/sshd_config ]; then
-        if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
-            ssh-keygen -A
-        fi
-        
-        cat > /etc/ssh/sshd_config << EOF
-Port 2222
+    if [ "$SSHD_ENABLED" = "true" ]; then
+        if [ -f /etc/ssh/sshd_config ]; then
+            if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
+                ssh-keygen -A
+            fi
+            
+            cat > /etc/ssh/sshd_config << EOF
+Port $SSHD_PORT
 PermitRootLogin no
 PasswordAuthentication yes
 ListenAddress 0.0.0.0
 AllowUsers test
 EOF
+            
+            echo -e "\e[32;1m[+] \e[0mFile sshd_conifg eingefuegt !\e[0m"
         
-        echo -e "\e[32;1m[+] \e[0mFile sshd_conifg eingefuegt !\e[0m"
-    
-    else
-        echo "❌ file etc/ssh/sshd_confug nicht vorhanden!! "
+        else
+            echo "❌ file etc/ssh/sshd_confug nicht vorhanden!! "
+        fi
     fi
     
     # Root Passwort (optional, falls du root lokal brauchst)
     echo "root:alpine" | chpasswd
     
-    # ============================================================
-    # App Ordner erstellen wenn nicht existiert
-    # ============================================================
-
-    if [[ ! -d $PYTHON_APP_DIR ]]; then
-        mkdir -p $PYTHON_APP_DIR
-        echo -e "\e[32;1m[+] \e[0mapp erstellt\e[0m"
-    else
-        echo -e "\e[32;1m[+] \e[0mapp schon vorhanden !!\e[0m"
-    fi
-    # ============================================================
-    # App Ordner erstellen 
-    # ============================================================
-    # Prüfe ob main.py schon existiert
-    if [ ! -f "$PYTHON_APP_DIR/main.py" ] && [ ! -f "$PYTHON_APP_DIR/main.pyc" ]; then
-        if [ -f "$TARFILE" ]; then
-            echo -e "\e[34;1m[*] \e[0mEntpacke private.tar nach $PYTHON_APP_DIR..."
-            tar -xf "$TARFILE" -C "$PYTHON_APP_DIR"
-            echo -e "\e[32;1m[+] \e[0mprivate.tar entpackt!"
-            chmod -R 755 $PYTHON_APP_DIR
-            echo -e "\e[32;1m[+] \e[0mBerechtigung fur app Verzeichnis!"
-            
-        else
-            echo -e "\e[33;1m[!] \e[0mprivate.tar nicht gefunden: $TARFILE"
-        fi
-    else
-        echo -e "\e[32;1m[✓] \e[0mmain.py/main.pyc bereits vorhanden, überspringe Entpacken"
-    fi
     # ============================================================
     # .profile FÜR ROOT ERSTELLEN (wenn nicht vorhanden)
     # ============================================================
@@ -181,30 +156,44 @@ alias lal='ls -la'
 alias cls=clear
 alias build="buildozer -v android debug"
 alias dists="cd /root/.buildozer/android/platform/build-arm64-v8a/dists"
+alias nmap="nmap -n -Pn -sT"
+
+echo "SSHD_PORT: $SSHD_PORT"
+echo "SSHD_ENABLED: $SSHD_ENABLED"
+echo "FTP_PORT: $FTP_PORT"
+echo "FTP_ENABLED: $FTP_ENABLED"
 
 # SSH starten
-if ! pgrep sshd > /dev/null; then
-    /usr/sbin/sshd &
-    echo -e "\e[32;1m[+] \e[0mSSHD gestartet\e[0m"
-else
-    echo -e "\e[31;1m[-] \e[0mSSHD schon aktiv \e[0m"
+if [ "$SSHD_ENABLED" = "true" ]; then
+    if ! nmap -p $SSHD_PORT localhost 2>/dev/null | grep -q "open"; then
+        if [ -x /usr/sbin/sshd ]; then
+            nohup /usr/sbin/sshd &
+            echo -e "\e[32;1m[+] \e[0mSSHD gestartet\e[0m"
+        else
+            echo "⚠️ pure-ftpd nicht installiert"
+        fi
+    else
+        echo -e "\e[31;1m[-] \e[0mSSHD schon aktiv \e[0m"
+    fi
 fi
 
 # FTP Server im Hintergrund starten
-if [ "$(id -u)" -eq 0 ]; then
-    if pgrep pure-ftpd > /dev/null; then
-    echo -e "\e[31;1m[+] \e[0mFTP-Server laeuft bereits \e[0m"
-else
-    if [ -x /usr/sbin/pure-ftpd ]; then
-        echo -e "\e[32;1m[+] \e[0m🚀 Starte FTP-Server...  \e[0m"
-        /usr/sbin/pure-ftpd -S 127.0.0.1,2135 -4 -E -j >/dev/null 2>&1 &
-        echo "✅ pure-ftpd gestartet"
+if [ "$FTP_ENABLED" = "true" ]; then
+    if ! nmap -p $FTP_PORT localhost 2>/dev/null | grep -q "open"; then
+        if [ "$(id -u)" -eq 0 ]; then
+            if [ -x /usr/sbin/pure-ftpd ]; then
+                echo -e "\e[32;1m[+] \e[0m🚀 Starte FTP-Server...  \e[0m"
+                /usr/sbin/pure-ftpd -S $FTP_PORT -4 -E -j -D >/dev/null 2>&1 &
+                echo "✅ pure-ftpd gestartet"
+            else
+                echo "⚠️ pure-ftpd nicht installiert"
+            fi
+        else
+            echo -e "[Autostart] Fehler: pure-ftpd kann nur im root gestartet werden"
+        fi
     else
-        echo "⚠️ pure-ftpd nicht installiert"
+        echo -e "\e[31;1m[+] \e[0mFTP-Server laeuft bereits \e[0m"
     fi
-fi
-else
-    echo -e "[Autostart] Fehler: pure-ftpd kann nur im root gestartet werden"
 fi
 EOF
         chown root:root "$BASHRC_PATH"
@@ -224,7 +213,6 @@ EOF
     # ======================================
     # NACH ERFOLGREICHER INSTALLATION: FLAG SETZEN
     # =====================================
-
     if [ -f "$ALPINE_FLAG" ]; then
         echo "✅ Alpine bereits installiert (Flag gefunden in $ALPINE_DIR)"
     else
