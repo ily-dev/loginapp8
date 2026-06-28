@@ -47,9 +47,9 @@ PREFIX=$(dirname "$(dirname "$ALPINE_DIR")")
 OUTPUT_DIR="${OUTPUT_DIR:-/sdcard}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-# ============================================================
+# ======================================
 # FARBEN
-# ============================================================
+# ======================================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -81,9 +81,9 @@ log_warn() { echo -e "${YELLOW}[⚠]${NC} $1"; }
 log_error() { echo -e "${RED}[✗]${NC} $1"; }
 log_progress() { echo -e "${CYAN}[➜]${NC} $1"; }
 
-# ============================================================
+# ======================================
 # GRÖSSEN-HELPER (KORRIGIERT)
-# ============================================================
+# ======================================
 get_size() {
     cd "$1" 2>/dev/null || return
     # Nur alpine-eigene Ordner messen (ohne gemountete)
@@ -107,9 +107,9 @@ format_size() {
     fi
 }
 
-# ============================================================
+# ======================================
 # ANALYSE VORHER
-# ============================================================
+# ======================================
 analyze_before() {
     log_info "Analysiere Alpine Rootfs VOR der Bereinigung..."
     
@@ -125,9 +125,9 @@ analyze_before() {
     TOTAL_BEFORE=$(get_size "$ALPINE_DIR")
     
     echo ""
-    echo "============================================================"
+    echo "================================"
     echo "📊 ${CYAN}SPEICHERANALYSE VOR BEREINIGUNG${NC}"
-    echo "============================================================"
+    echo "==============================="
     printf "%-30s %15s\n" "Verzeichnis/Datei" "Größe"
     echo "------------------------------------------------------------"
     [ "$TMP_SIZE" -gt 0 ] && printf "%-30s %15s\n" "tmp/" "$(format_size $TMP_SIZE)"
@@ -138,14 +138,14 @@ analyze_before() {
     [ "$APK_CACHE" -gt 0 ] && printf "%-30s %15s\n" "etc/apk/cache/" "$(format_size $APK_CACHE)"
     echo "------------------------------------------------------------"
     printf "${GREEN}%-30s ${CYAN}%15s${NC}\n" "GESAMT" "$(format_size $TOTAL_BEFORE)"
-    echo "============================================================"
+    echo "================================"
     
     export TOTAL_BEFORE
 }
 
-# ============================================================
+# =====================================
 # ANALYSE NACHHER (KORRIGIERT - OHNE bc .)
-# ============================================================
+# =====================================
 analyze_after() {
     local TOTAL_AFTER=$(get_size "$ALPINE_DIR")
     local SAVED=$((TOTAL_BEFORE - TOTAL_AFTER))
@@ -156,9 +156,9 @@ analyze_after() {
     fi
     
     echo ""
-    echo "============================================================"
+    echo "==============================="
     echo "📊 ${GREEN}SPEICHERERSPARNIS NACH BEREINIGUNG${NC}"
-    echo "============================================================"
+    echo "==============================="
     printf "%-30s %15s\n" "" "Größe"
     echo "------------------------------------------------------------"
     printf "%-30s ${RED}%15s${NC}\n" "Vorher" "$(format_size $TOTAL_BEFORE)"
@@ -178,12 +178,12 @@ analyze_after() {
         printf "%${EMPTY}s" | tr ' ' '░'
         echo "] ${PERCENT}% gespart"
     fi
-    echo "============================================================"
+    echo "================================"
 }
 
-# ============================================================
+# ======================================
 # BEREINIGEN
-# ============================================================
+# ======================================
 clean_alpine() {
     log_info "Starte Bereinigung von Alpine..."
     
@@ -231,9 +231,9 @@ clean_alpine() {
     log_success "Bereinigung abgeschlossen!"
 }
 
-# ============================================================
+# ======================================
 # ROOTFS PACKEN (KORRIGIERT - OHNE root!)
-# ============================================================
+# ======================================
 pack_alpine() {
     log_info "Starte Packen von Alpine..."
     
@@ -254,7 +254,6 @@ pack_alpine() {
         --exclude='root/app_files' \
         --exclude='proc/*' \
         --exclude='proc' \
-        --exclude='sys/*' \
         --exclude='dev/*' \
         --exclude='dev' \
         --exclude='run/*' \
@@ -295,7 +294,7 @@ pack_alpine() {
         --exclude='usr/share/info/*' \
         --exclude='usr/share/locale/*' \
         --exclude='lib/apk/db/scripts/*' \
-        . #2>/dev/null
+        . 2>/dev/null
         
     TAR_EXIT=$?
     sync 
@@ -316,7 +315,7 @@ pack_alpine() {
         log_success "Größe: $SIZE"
     
         if [ -d "$PREFIX/files" ]; then
-            cp "$OUTPUT_FILE" "$PREFIX/files/alpine.tar.gz"
+            #cp "$OUTPUT_FILE" "$PREFIX/files/alpine.tar.gz"
             log_success "Kopiert nach: $PREFIX/files/alpine.tar.gz"
         fi
         
@@ -326,9 +325,9 @@ pack_alpine() {
     fi
 }
 
-# ============================================================
+# =====================================
 # HAUPT-FUNKTION
-# ============================================================
+# =====================================
 main() {
     ACTION="full"
     REMOVE_SSH_KEYS="false"
@@ -347,9 +346,9 @@ main() {
         esac
     done
     
-    echo "============================================================"
+    echo "================================"
     echo "  ${GREEN}rem_alpine.sh${NC} - Alpine Rootfs Tool"
-    echo "============================================================"
+    echo "================================"
     echo ""
     echo "📁 Alpine Verzeichnis: $ALPINE_DIR"
     echo "📁 Ausgabe: $OUTPUT_DIR"
@@ -373,9 +372,9 @@ main() {
     esac
     
     echo ""
-    echo "============================================================"
+    echo "================================"
     log_success "Fertig!"
-    echo "============================================================"
+    echo "================================"
 }
 
 main "$@"

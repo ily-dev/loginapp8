@@ -363,7 +363,7 @@ pack_ubuntu() {
         log_success "Größe: $SIZE"
     
         if [ -d "$PREFIX/files" ]; then
-            cp "$OUTPUT_FILE" "$PREFIX/files/ubuntu.tar.gz"
+            #cp "$OUTPUT_FILE" "$PREFIX/files/ubuntu.tar.gz"
             log_success "Kopiert nach: $PREFIX/files/ubuntu.tar.gz"
         fi
         

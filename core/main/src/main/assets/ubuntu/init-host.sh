@@ -12,10 +12,10 @@ APP_FILES_DIR=$PREFIX/files
 LOCAL_DIR=$PREFIX/local
 TARFILE_UBUNTU=$PREFIX/files/ubuntu.tar.gz
 
-#local/ubuntu erstellen
-mkdir -p $UBUNTU_DIR
-#chmod local
-chmod -R 755 $LOCAL_DIR
+if [ ! -d $UBUNTU_DIR ]; then
+    #local/ubuntu erstellen
+    mkdir -p $UBUNTU_DIR
+fi
 
 # ============================================================
 # UBUNTU ROOTFS ENTPACKEN
@@ -25,6 +25,9 @@ if [ -z "$(ls -A "$UBUNTU_DIR" | grep -vE '^(root|tmp)$')" ]; then
     tar -xf $TARFILE_UBUNTU -C $UBUNTU_DIR --no-same-owner --no-same-permissions 2>/dev/null
     #tarfile wieder vom files loeschen
     rm $TARFILE_UBUNTU
+    #chmod local
+    chmod -R 755 $LOCAL_DIR
+
     rm -f $ROOT/.bashrc $ROOT/.profile $ROOT/.bash_history $ROOT/.ash_history 2>/dev/null
     echo "✅ Ubuntu Rootfs entpackt"
 fi

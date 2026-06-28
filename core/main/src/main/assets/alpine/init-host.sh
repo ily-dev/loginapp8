@@ -3,15 +3,18 @@ APP_FILES_DIR=$PREFIX/files
 LOCAL_DIR=$PREFIX/local
 PROFILE=$PREFIX/local/alpine/root/.profile
 TARFILE_ALPINE=$PREFIX/files/alpine.tar.gz
-#ordner local/alpine erstellen
-mkdir -p $ALPINE_DIR
-#chmod local
-chmod -R 755 $LOCAL_DIR
+
+if [ ! -d $ALPINE_DIR ]; then
+    #ordner local/alpine erstellen
+    mkdir -p $ALPINE_DIR
+fi
 
 if [ -z "$(ls -A "$ALPINE_DIR" | grep -vE '^(root|tmp)$')" ]; then
     tar -xf $TARFILE_ALPINE -C "$ALPINE_DIR"
     #tarfile von files loeschen
     rm $TARFILE_ALPINE
+    #chmod local (nur einmal beim start)
+    chmod -R 755 $LOCAL_DIR
 fi
 
 [ ! -e "$PREFIX/local/bin/proot" ] && cp "$PREFIX/files/proot" "$PREFIX/local/bin"
