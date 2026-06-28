@@ -9,9 +9,13 @@ echo "start init-host.sh ubuntu"
 UBUNTU_DIR=$PREFIX/local/ubuntu
 ROOT=$PREFIX/local/ubuntu/root
 APP_FILES_DIR=$PREFIX/files
+LOCAL_DIR=$PREFIX/local
 TARFILE_UBUNTU=$PREFIX/files/ubuntu.tar.gz
 
+#local/ubuntu erstellen
 mkdir -p $UBUNTU_DIR
+#chmod local
+chmod -R 755 $LOCAL_DIR
 
 # ============================================================
 # UBUNTU ROOTFS ENTPACKEN
@@ -19,6 +23,8 @@ mkdir -p $UBUNTU_DIR
 if [ -z "$(ls -A "$UBUNTU_DIR" | grep -vE '^(root|tmp)$')" ]; then
     echo "📦 Entpacke Ubuntu Rootfs..."
     tar -xf $TARFILE_UBUNTU -C $UBUNTU_DIR --no-same-owner --no-same-permissions 2>/dev/null
+    #tarfile wieder vom files loeschen
+    rm $TARFILE_UBUNTU
     rm -f $ROOT/.bashrc $ROOT/.profile $ROOT/.bash_history $ROOT/.ash_history 2>/dev/null
     echo "✅ Ubuntu Rootfs entpackt"
 fi
@@ -88,6 +94,31 @@ ARGS="$ARGS -b $PREFIX/local/stat:/proc/stat"
 ARGS="$ARGS -b $PREFIX/local/vmstat:/proc/vmstat"
 ARGS="$ARGS -b $PREFIX/files/support/uptime:/proc/uptime"
 ARGS="$ARGS -b $PREFIX/files/support/version:/proc/version"
+
+
+# ============================================================
+# LOCAL VERZEICHNISSE UND DATEIEN MOUNTEN
+# ============================================================
+
+# 1. ALLE ORDNER mounten (außer alpine und ubuntu)
+for dir in "$LOCAL_DIR"/*; do
+    if [ -d "$dir" ]; then
+        basename=$(basename "$dir")
+        if [ "$basename" != "alpine" ] && [ "$basename" != "ubuntu" ]; then
+            ARGS="$ARGS -b $dir:/root/local/$basename"
+            #echo "📁 Mount (Ordner): $dir → /root/local/$basename"
+        fi
+    fi
+done
+
+# 2. ★ ★ ★ ALLE DATEIEN mounten ★ ★ ★
+for file in "$LOCAL_DIR"/*; do
+    if [ -f "$file" ]; then
+        basename=$(basename "$file")
+        ARGS="$ARGS -b $file:/root/local/$basename"
+        #echo "📄 Mount (Datei): $file → /root/local/$basename"
+    fi
+done
 
 # App-Verzeichnis einbinden
 if [ -d "$APP_FILES_DIR" ]; then

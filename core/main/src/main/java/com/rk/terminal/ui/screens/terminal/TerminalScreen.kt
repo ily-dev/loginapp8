@@ -175,7 +175,8 @@ private data class AssetFiles(
     val ubuntuTar: String,
     val alpineTar: String,
     val remAlpine: String,
-    val remUbuntu: String
+    val remUbuntu: String,
+    val diskUsage: String
 )
 
 private data class AbiUrls(
@@ -199,21 +200,24 @@ private val assetFilesMap = mapOf(
         ubuntuTar = "ubuntu/ubuntu.tar",
         alpineTar = "alpine/alpine.tar",
         remAlpine = "alpine/rem_alpine5.sh",
-        remUbuntu = "ubuntu/rem_ubuntu2.sh"
+        remUbuntu = "ubuntu/rem_ubuntu2.sh",
+        diskUsage = "disk_usage.sh"
     ),
     "arm64-v8a" to AssetFiles(
         privateTar = "private.tar",
         ubuntuTar = "ubuntu/ubuntu.tar",  
         alpineTar = "alpine/alpine.tar",
         remAlpine = "alpine/rem_alpine5.sh",
-        remUbuntu = "ubuntu/rem_ubuntu2.sh"
+        remUbuntu = "ubuntu/rem_ubuntu2.sh",
+        diskUsage = "disk_usage.sh"
     ),
     "armeabi-v7a" to AssetFiles(
         privateTar = "private.tar",
         ubuntuTar = "ubuntu/ubuntu.tar",
         alpineTar = "alpine/alpine.tar",
         remAlpine = "alpine/rem_alpine5.sh",
-        remUbuntu = "ubuntu/rem_ubuntu2.sh"
+        remUbuntu = "ubuntu/rem_ubuntu2.sh",
+        diskUsage = "disk_usage.sh"
     )
 )
 
@@ -322,14 +326,15 @@ suspend fun runDownloaderSetup(
             "ubuntu.tar.gz" to assetFilesMap[abi]!!.ubuntuTar,
             "alpine.tar.gz" to assetFilesMap[abi]!!.alpineTar,
             "rem_alpine.sh" to assetFilesMap[abi]!!.remAlpine,
-            "rem_ubuntu.sh" to assetFilesMap[abi]!!.remUbuntu
+            "rem_ubuntu.sh" to assetFilesMap[abi]!!.remUbuntu,
+            "disk_usage.sh" to assetFilesMap[abi]!!.diskUsage
         ).mapNotNull { (name, assetPath) -> 
             try {
                 context.assets.open(assetPath).close()
                 
                 // ★ ★ ★ Entscheide Zielverzeichnis ★ ★ ★
                 val targetFile = when (name) {
-                    "rem_alpine.sh", "rem_ubuntu.sh" -> {
+                    "rem_alpine.sh", "rem_ubuntu.sh", "disk_usage.sh" -> {
                         // In local Verzeichnis kopieren
                         Rootfs.localDir.child(name)
                     }

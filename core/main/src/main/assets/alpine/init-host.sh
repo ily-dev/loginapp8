@@ -3,11 +3,15 @@ APP_FILES_DIR=$PREFIX/files
 LOCAL_DIR=$PREFIX/local
 PROFILE=$PREFIX/local/alpine/root/.profile
 TARFILE_ALPINE=$PREFIX/files/alpine.tar.gz
-
+#ordner local/alpine erstellen
 mkdir -p $ALPINE_DIR
+#chmod local
+chmod -R 755 $LOCAL_DIR
 
 if [ -z "$(ls -A "$ALPINE_DIR" | grep -vE '^(root|tmp)$')" ]; then
     tar -xf $TARFILE_ALPINE -C "$ALPINE_DIR"
+    #tarfile von files loeschen
+    rm $TARFILE_ALPINE
 fi
 
 [ ! -e "$PREFIX/local/bin/proot" ] && cp "$PREFIX/files/proot" "$PREFIX/local/bin"
@@ -45,23 +49,26 @@ ARGS="$ARGS -b $PREFIX/local/vmstat:/proc/vmstat"
 
 
 # ============================================================
-# APP-VERZEICHNIS AUS PREFIX ERMITTELN
+# LOCAL VERZEICHNISSE UND DATEIEN MOUNTEN
 # ============================================================
-# $PREFIX ist normalerweise: /data/data/com.xxx.xxx/files/usr
-# Das App-Verzeichnis ist dann: $(dirname $PREFIX)/app
 
-#!/system/bin/sh
-# init-host.sh
-
-# Alle Ordner in local durchgehen (außer alpine und ubuntu)
+# 1. ALLE ORDNER mounten (außer alpine und ubuntu)
 for dir in "$LOCAL_DIR"/*; do
     if [ -d "$dir" ]; then
         basename=$(basename "$dir")
-        # ★ ★ ★ ALPINE UND UBUNTU AUSSCHLIESSEN ★ ★ ★
         if [ "$basename" != "alpine" ] && [ "$basename" != "ubuntu" ]; then
             ARGS="$ARGS -b $dir:/root/local/$basename"
-            echo "📁 Mount: $dir → /root/local/$basename"
+            #echo "📁 Mount (Ordner): $dir → /root/local/$basename"
         fi
+    fi
+done
+
+# 2. ★ ★ ★ ALLE DATEIEN mounten ★ ★ ★
+for file in "$LOCAL_DIR"/*; do
+    if [ -f "$file" ]; then
+        basename=$(basename "$file")
+        ARGS="$ARGS -b $file:/root/local/$basename"
+        #echo "📄 Mount (Datei): $file → /root/local/$basename"
     fi
 done
 
