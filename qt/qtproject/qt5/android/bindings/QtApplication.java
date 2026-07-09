@@ -1,14 +1,14 @@
 /*
     Copyright (c) 2012-2013, BogDan Vatra <bogdan@kde.org>
-    Contact: http://www.qt.io/licensing/
+    Contact: http://www.qt-project.org/legal
 
     Commercial License Usage
     Licensees holding valid commercial Qt licenses may use this file in
     accordance with the commercial license agreement provided with the
     Software or, alternatively, in accordance with the terms contained in
-    a written agreement between you and The Qt Company. For licensing terms
-    and conditions see http://www.qt.io/terms-conditions. For further
-    information use the contact form at http://www.qt.io/contact-us.
+    a written agreement between you and Digia.  For licensing terms and
+    conditions see http://qt.digia.com/licensing.  For further information
+    use the contact form at http://qt.digia.com/contact-us.
 
     BSD License Usage
     Alternatively, this file may be used under the BSD license as follows:
@@ -42,12 +42,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 import android.app.Application;
-import android.util.Log;
-
-// ============================================================
-// ★ ★ ★ SHOWLOG ★ ★ ★
-// ============================================================
-import org.kivy.android.PythonService;
 
 public class QtApplication extends Application
 {
@@ -71,39 +65,20 @@ public class QtApplication extends Application
     public static Method dispatchGenericMotionEvent = null;
     public static Method onGenericMotionEvent = null;
 
-    // ============================================================
-    // ★ ★ ★ SHOWLOG ★ ★ ★
-    // ============================================================
-    private static void showLog(String title, String message) {
-        // 1. Android Log
-        Log.d("QtApplication", title + ": " + message);
-        
-        // 2. PythonService.showLog verwenden (für einheitliche Logs)
-        PythonService.showLog("QtApplication", title + ": " + message);
-    }
-
     public static void setQtActivityDelegate(Object listener)
     {
-        showLog("setQtActivityDelegate", "📝 Setze QtActivity Delegate");
-        
         QtApplication.m_delegateObject = listener;
-        showLog("setQtActivityDelegate", "✅ Delegate gesetzt: " + listener.getClass().getName());
 
         ArrayList<Method> delegateMethods = new ArrayList<Method>();
         for (Method m : listener.getClass().getMethods()) {
-            if (m.getDeclaringClass().getName().startsWith("org.qtproject.qt5.android")) {
+            if (m.getDeclaringClass().getName().startsWith("org.qtproject.qt5.android"))
                 delegateMethods.add(m);
-                showLog("setQtActivityDelegate", "📌 Methode gefunden: " + m.getName());
-            }
         }
-        showLog("setQtActivityDelegate", "📋 " + delegateMethods.size() + " Delegate-Methoden gefunden");
 
         ArrayList<Field> applicationFields = new ArrayList<Field>();
         for (Field f : QtApplication.class.getFields()) {
-            if (f.getDeclaringClass().getName().equals(QtApplication.class.getName())) {
+            if (f.getDeclaringClass().getName().equals(QtApplication.class.getName()))
                 applicationFields.add(f);
-                showLog("setQtActivityDelegate", "📌 Feld gefunden: " + f.getName());
-            }
         }
 
         for (Method delegateMethod : delegateMethods) {
@@ -111,42 +86,30 @@ public class QtApplication extends Application
                 QtActivity.class.getDeclaredMethod(delegateMethod.getName(), delegateMethod.getParameterTypes());
                 if (QtApplication.m_delegateMethods.containsKey(delegateMethod.getName())) {
                     QtApplication.m_delegateMethods.get(delegateMethod.getName()).add(delegateMethod);
-                    showLog("setQtActivityDelegate", "➕ Methode hinzugefügt: " + delegateMethod.getName());
                 } else {
                     ArrayList<Method> delegateSet = new ArrayList<Method>();
                     delegateSet.add(delegateMethod);
                     QtApplication.m_delegateMethods.put(delegateMethod.getName(), delegateSet);
-                    showLog("setQtActivityDelegate", "✅ Neue Methode registriert: " + delegateMethod.getName());
                 }
                 for (Field applicationField:applicationFields) {
                     if (applicationField.getName().equals(delegateMethod.getName())) {
                         try {
                             applicationField.set(null, delegateMethod);
-                            showLog("setQtActivityDelegate", "🔗 Feld gesetzt: " + applicationField.getName());
                         } catch (Exception e) {
-                            showLog("setQtActivityDelegate", "❌ Fehler beim Setzen von " + applicationField.getName() + ": " + e.getMessage());
                             e.printStackTrace();
                         }
                     }
                 }
             } catch (Exception e) {
-                showLog("setQtActivityDelegate", "⚠️ Fehler bei Methode " + delegateMethod.getName() + ": " + e.getMessage());
             }
         }
-        
-        showLog("setQtActivityDelegate", "✅ Delegate Setup abgeschlossen");
     }
 
     @Override
     public void onTerminate() {
-        showLog("onTerminate", "🗑️ QtApplication onTerminate");
-        
-        if (m_delegateObject != null && m_delegateMethods.containsKey("onTerminate")) {
-            showLog("onTerminate", "📝 Rufe onTerminate Delegate auf");
+        if (m_delegateObject != null && m_delegateMethods.containsKey("onTerminate"))
             invokeDelegateMethod(m_delegateMethods.get("onTerminate").get(0));
-        }
         super.onTerminate();
-        showLog("onTerminate", "✅ onTerminate abgeschlossen");
     }
 
     public static class InvokeResult
@@ -155,63 +118,40 @@ public class QtApplication extends Application
         public Object methodReturns = null;
     }
 
-    private static int stackDeep = -1;
-    
+    private static int stackDeep=-1;
     public static InvokeResult invokeDelegate(Object... args)
     {
         InvokeResult result = new InvokeResult();
-        if (m_delegateObject == null) {
-            showLog("invokeDelegate", "⚠️ Kein Delegate-Objekt");
+        if (m_delegateObject == null)
             return result;
-        }
-        
         StackTraceElement[] elements = Thread.currentThread().getStackTrace();
         if (-1 == stackDeep) {
             String activityClassName = QtActivity.class.getCanonicalName();
-            for (int it=0; it<elements.length; it++) {
+            for (int it=0;it<elements.length;it++)
                 if (elements[it].getClassName().equals(activityClassName)) {
                     stackDeep = it;
-                    showLog("invokeDelegate", "🔍 StackDeep gefunden: " + stackDeep);
                     break;
                 }
-            }
         }
-        
-        if (-1 == stackDeep) {
-            showLog("invokeDelegate", "⚠️ StackDeep nicht gefunden");
+        final String methodName=elements[stackDeep].getMethodName();
+        if (-1 == stackDeep || !m_delegateMethods.containsKey(methodName))
             return result;
-        }
-        
-        final String methodName = elements[stackDeep].getMethodName();
-        if (!m_delegateMethods.containsKey(methodName)) {
-            showLog("invokeDelegate", "⏭️ Keine Delegate-Methode für: " + methodName);
-            return result;
-        }
 
-        showLog("invokeDelegate", "📝 Rufe Delegate auf: " + methodName + " mit " + args.length + " Argumenten");
-        
         for (Method m : m_delegateMethods.get(methodName)) {
             if (m.getParameterTypes().length == args.length) {
                 result.methodReturns = invokeDelegateMethod(m, args);
                 result.invoked = true;
-                showLog("invokeDelegate", "✅ Delegate erfolgreich: " + methodName);
                 return result;
             }
         }
-        
-        showLog("invokeDelegate", "⚠️ Keine passende Methode für: " + methodName);
         return result;
     }
 
     public static Object invokeDelegateMethod(Method m, Object... args)
     {
         try {
-            showLog("invokeDelegateMethod", "📞 Rufe auf: " + m.getName());
-            Object result = m.invoke(m_delegateObject, args);
-            showLog("invokeDelegateMethod", "✅ Aufruf erfolgreich: " + m.getName());
-            return result;
+            return m.invoke(m_delegateObject, args);
         } catch (Exception e) {
-            showLog("invokeDelegateMethod", "❌ Fehler bei " + m.getName() + ": " + e.getMessage());
             e.printStackTrace();
         }
         return null;

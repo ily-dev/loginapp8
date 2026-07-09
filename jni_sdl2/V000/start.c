@@ -49,6 +49,7 @@ static void init_log_file() {
     if (log_file != NULL) return;
     log_file = fopen(LOG_FILE_NAME, "a");
     if (log_file == NULL) {
+        // Fallback: Interner Speicher
         log_file = fopen("/data/local/tmp/libmainQt.log", "a");
     }
     if (log_file != NULL) {
@@ -408,134 +409,62 @@ int main(int argc, char *argv[]) {
     LOGP("Preparing to initialize python");
     LOG("start.c", "📁 Preparing Python init");
 
-    // ============================================================
-    // ★ ★ ★ PYTHONHOME UND PYTHONPATH SETZEN (DEBUG + FIX) ★ ★ ★
-    // ============================================================
-    const char *unpack_dir = getenv("ANDROID_UNPACK");
-    char python_bundle_dir[512];
-    char python_home[512];
-    char python_path[1024];
-    
-    LOGP("🔍 ANDROID_UNPACK = %s", unpack_dir);
-    LOG("start.c", "🔍 ANDROID_UNPACK value");
+    char python_bundle_dir[256];
+    snprintf(python_bundle_dir, 256,
+             "%s/_python_bundle", getenv("ANDROID_UNPACK"));
 
-    if (unpack_dir == NULL) {
-        LOGE("❌ ANDROID_UNPACK is NULL!");
-        LOG("start.c", "❌ ANDROID_UNPACK is NULL");
-        close_log_file();
-        return -1;
+    #if PY_MAJOR_VERSION >= 3
+        #if PY_MINOR_VERSION >= P4A_MIN_VER
+            PyConfig config;
+            PyConfig_InitPythonConfig(&config);
+            config.program_name = L"android_python";
+        #else
+            Py_SetProgramName(L"android_python");
+        #endif
+    #else
+        Py_SetProgramName("android_python");
+    #endif
+
+    if (dir_exists(python_bundle_dir)) {
+        LOGP("_python_bundle dir exists");
+        LOG("start.c", "✅ _python_bundle dir exists");
+
+        #if PY_MAJOR_VERSION >= 3
+            #if PY_MINOR_VERSION >= P4A_MIN_VER
+                wchar_t wchar_zip_path[256];
+                wchar_t wchar_modules_path[256];
+                swprintf(wchar_zip_path, 256, L"%s/stdlib.zip", python_bundle_dir);
+                swprintf(wchar_modules_path, 256, L"%s/modules", python_bundle_dir);
+
+                config.module_search_paths_set = 1;
+                PyWideStringList_Append(&config.module_search_paths, wchar_zip_path);
+                PyWideStringList_Append(&config.module_search_paths, wchar_modules_path);
+            #else
+                char paths[512];
+                snprintf(paths, 512, "%s/stdlib.zip:%s/modules", python_bundle_dir, python_bundle_dir);
+                wchar_t *wchar_paths = Py_DecodeLocale(paths, NULL);
+                Py_SetPath(wchar_paths);
+            #endif
+        #endif
+        LOGP("set wchar paths...");
+    } else {
+        LOGP("⚠️ _python_bundle does not exist!");
+        LOG("start.c", "⚠️ _python_bundle does not exist");
     }
 
-    snprintf(python_bundle_dir, sizeof(python_bundle_dir),
-             "%s/_python_bundle", unpack_dir);
-    snprintf(python_home, sizeof(python_home), "%s", python_bundle_dir);
-    snprintf(python_path, sizeof(python_path), "%s/stdlib.zip:%s/modules", 
-             python_bundle_dir, python_bundle_dir);
-
-    setenv("PYTHONHOME", python_home, 1);
-    setenv("PYTHONPATH", python_path, 1);
-    setenv("PYTHONUTF8", "1", 1);
-
-    LOGP("🐍 PYTHONHOME = %s", python_home);
-    LOGP("🐍 PYTHONPATH = %s", python_path);
-    LOG("start.c", "✅ PYTHONHOME und PYTHONPATH gesetzt (explizit)");
-
-    // ============================================================
-    // ★ ★ ★ PYTHON INIT (MIT ALLEN FIXES) ★ ★ ★
-    // ============================================================
-    #if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= P4A_MIN_VER
-        PyConfig config;
-        PyConfig_InitPythonConfig(&config);
-        config.program_name = L"android_python";
-
-        // ★ ★ ★ config.home SETZEN ★ ★ ★
-        wchar_t *wchar_home = Py_DecodeLocale(python_home, NULL);
-        if (wchar_home != NULL) {
-            config.home = wchar_home;
-            config.prefix = wchar_home;
-            config.exec_prefix = wchar_home;
-            LOGP("✅ config.home = %s", python_home);
-        } else {
-            LOGE("❌ Py_DecodeLocale failed for PYTHONHOME");
-            LOG("start.c", "❌ Py_DecodeLocale failed");
-            close_log_file();
-            return -1;
-        }
-
-        // ★ ★ ★ ZUSÄTZLICHE CONFIG-FELDER (FIX!) ★ ★ ★
-        config.isolated = 0;
-        config.site_import = 1;
-        config.install_signal_handlers = 1;
-        config.use_environment = 1;
-        config.filesystem_encoding = NULL;   // Automatisch erkennen
-        config.filesystem_errors = NULL;     // Automatisch erkennen
-        LOGP("✅ Zusätzliche config-Felder gesetzt (isolated, site_import, etc.)");
-
-        // ★ ★ ★ config.module_search_paths SETZEN ★ ★ ★
-        config.module_search_paths_set = 1;
-
-        // stdlib.zip
-        char stdlib_path[512];
-        snprintf(stdlib_path, sizeof(stdlib_path), "%s/stdlib.zip", python_bundle_dir);
-        wchar_t *wchar_stdlib = Py_DecodeLocale(stdlib_path, NULL);
-        if (wchar_stdlib != NULL) {
-            PyWideStringList_Append(&config.module_search_paths, wchar_stdlib);
-            LOGP("✅ stdlib.zip: %s", stdlib_path);
-        } else {
-            LOGE("❌ Py_DecodeLocale failed for stdlib.zip");
-        }
-
-        // modules
-        char modules_path[512];
-        snprintf(modules_path, sizeof(modules_path), "%s/modules", python_bundle_dir);
-        wchar_t *wchar_modules = Py_DecodeLocale(modules_path, NULL);
-        if (wchar_modules != NULL) {
-            PyWideStringList_Append(&config.module_search_paths, wchar_modules);
-            LOGP("✅ modules: %s", modules_path);
-        } else {
-            LOGE("❌ Py_DecodeLocale failed for modules");
-        }
-
-        // site-packages
-        char site_packages_path[512];
-        snprintf(site_packages_path, sizeof(site_packages_path), "%s/site-packages", python_bundle_dir);
-        wchar_t *wchar_site = Py_DecodeLocale(site_packages_path, NULL);
-        if (wchar_site != NULL) {
-            PyWideStringList_Append(&config.module_search_paths, wchar_site);
-            LOGP("✅ site-packages: %s", site_packages_path);
-        } else {
-            LOGE("❌ Py_DecodeLocale failed for site-packages");
-        }
-
-        // ★ ★ ★ PYTHONUTF8 setzen ★ ★ ★
-        setenv("PYTHONUTF8", "1", 1);
-
-        // ★ ★ ★ DEBUG: config vor Initialize ausgeben ★ ★ ★
-        LOGP("🔍 config.isolated = %d", config.isolated);
-        LOGP("🔍 config.site_import = %d", config.site_import);
-        LOGP("🔍 config.use_environment = %d", config.use_environment);
-        LOGP("🔍 config.module_search_paths count = %d", 
-              config.module_search_paths.length);
-
-        PyStatus status = Py_InitializeFromConfig(&config);
-        if (PyStatus_Exception(status)) {
-            LOGE("❌ Python initialization failed: %s", status.err_msg);
-            LOGP("Python initialization failed:");
-            LOGP(status.err_msg);
-            LOG("start.c", "❌ Python initialization failed");
-            // Fallback: Py_Initialize() ohne config
-            Py_Initialize();
-            LOGP("✅ Fallback: Py_Initialize() used");
-            LOG("start.c", "✅ Fallback: Py_Initialize() used");
-        } else {
-            LOGP("✅ Python initialized via Py_InitializeFromConfig()");
-            LOG("start.c", "✅ Python initialized via Py_InitializeFromConfig()");
-        }
-    #else
-        Py_Initialize();
-        LOGP("Python initialized using legacy Py_Initialize().");
-        LOG("start.c", "✅ Python initialized (legacy)");
-    #endif
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= P4A_MIN_VER
+    PyStatus status = Py_InitializeFromConfig(&config);
+    if (PyStatus_Exception(status)) {
+        LOGE("❌ Python initialization failed: %s", status.err_msg);
+        LOGP("Python initialization failed:");
+        LOGP(status.err_msg);
+        LOG("start.c", "❌ Python initialization failed");
+    }
+#else
+    Py_Initialize();
+    LOGP("Python initialized using legacy Py_Initialize().");
+    LOG("start.c", "✅ Python initialized");
+#endif
 
     LOGP("Initialized python");
     LOG("start.c", "✅ Python initialized");
@@ -559,9 +488,6 @@ int main(int argc, char *argv[]) {
     char add_site_packages_dir[256];
 
     if (dir_exists(python_bundle_dir)) {
-        LOGP("✅ _python_bundle dir exists");
-        LOG("start.c", "✅ _python_bundle dir exists");
-        
         snprintf(add_site_packages_dir, 256,
                  "sys.path.append('%s/site-packages')",
                  python_bundle_dir);
@@ -580,11 +506,6 @@ int main(int argc, char *argv[]) {
         PyRun_SimpleString("sys.path = ['.'] + sys.path");
         PyRun_SimpleString("os.environ['PYTHONPATH'] = ':'.join(sys.path)");
         LOG("start.c", "✅ sys.path configured");
-    } else {
-        LOGE("❌ _python_bundle does NOT exist!");
-        LOG("start.c", "❌ _python_bundle does NOT exist");
-        close_log_file();
-        return -1;
     }
 
     PyRun_SimpleString(
@@ -608,12 +529,6 @@ int main(int argc, char *argv[]) {
     PyRun_SimpleString("import site; print site.getsitepackages()\n");
 #endif
 
-    // ============================================================
-    // ★ ★ ★ ENTRYPOINT PRÜFEN ★ ★ ★
-    // ============================================================
-    LOGP("🔍 ENTRYPOINT: %s", env_entrypoint);
-    LOG("start.c", "🔍 ENTRYPOINT value");
-
     char *dot = strrchr(env_entrypoint, '.');
     char *ext = ".pyc";
     if (dot <= 0) {
@@ -632,7 +547,7 @@ int main(int argc, char *argv[]) {
         if (!file_exists(env_entrypoint)) {
             strcpy(entrypoint, env_entrypoint);
             entrypoint[strlen(env_entrypoint) - 1] = '\0';
-            LOGP("📄 Fallback to: %s", entrypoint);
+            LOGP(entrypoint);
             if (!file_exists(entrypoint)) {
                 LOGE("❌ Entrypoint not found (.pyc, fallback on .py), abort");
                 LOG("start.c", "❌ Entrypoint not found");
@@ -641,7 +556,6 @@ int main(int argc, char *argv[]) {
             }
         } else {
             strcpy(entrypoint, env_entrypoint);
-            LOGP("📄 Entrypoint (pyc): %s", entrypoint);
         }
     } else if (!strcmp(dot, ".py")) {
         strcpy(entrypoint, env_entrypoint);
@@ -655,9 +569,6 @@ int main(int argc, char *argv[]) {
                 return -1;
             }
             strcpy(entrypoint, env_entrypoint);
-            LOGP("📄 Entrypoint (py): %s", entrypoint);
-        } else {
-            LOGP("📄 Entrypoint (pyc): %s", entrypoint);
         }
     } else {
         LOGE("❌ Entrypoint have an invalid extension (must be .py or .pyc), abort.");
@@ -665,9 +576,6 @@ int main(int argc, char *argv[]) {
         close_log_file();
         return -1;
     }
-
-    LOGP("✅ FINAL ENTRYPOINT: %s", entrypoint);
-    LOG("start.c", "✅ FINAL ENTRYPOINT");
 
     fd = fopen(entrypoint, "r");
     if (fd == NULL) {

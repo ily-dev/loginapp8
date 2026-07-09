@@ -409,16 +409,9 @@ int main(int argc, char *argv[]) {
     LOG("start.c", "📁 Preparing Python init");
 
     // ============================================================
-    // ★ ★ ★ PYTHONHOME UND PYTHONPATH SETZEN (DEBUG + FIX) ★ ★ ★
+    // ★ ★ ★ PYTHONHOME UND PYTHONPATH (WIE SDL2) ★ ★ ★
     // ============================================================
     const char *unpack_dir = getenv("ANDROID_UNPACK");
-    char python_bundle_dir[512];
-    char python_home[512];
-    char python_path[1024];
-    
-    LOGP("🔍 ANDROID_UNPACK = %s", unpack_dir);
-    LOG("start.c", "🔍 ANDROID_UNPACK value");
-
     if (unpack_dir == NULL) {
         LOGE("❌ ANDROID_UNPACK is NULL!");
         LOG("start.c", "❌ ANDROID_UNPACK is NULL");
@@ -426,22 +419,25 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    snprintf(python_bundle_dir, sizeof(python_bundle_dir),
-             "%s/_python_bundle", unpack_dir);
-    snprintf(python_home, sizeof(python_home), "%s", python_bundle_dir);
-    snprintf(python_path, sizeof(python_path), "%s/stdlib.zip:%s/modules", 
-             python_bundle_dir, python_bundle_dir);
+    char python_home[512];
+    char python_path[1024];
+
+    // PYTHONHOME = ANDROID_UNPACK (nicht _python_bundle!)
+    snprintf(python_home, sizeof(python_home), "%s", unpack_dir);
+
+    // PYTHONPATH = ANDROID_UNPACK + /lib (wie SDL2)
+    snprintf(python_path, sizeof(python_path), "%s:%s/lib", unpack_dir, unpack_dir);
 
     setenv("PYTHONHOME", python_home, 1);
     setenv("PYTHONPATH", python_path, 1);
     setenv("PYTHONUTF8", "1", 1);
 
-    LOGP("🐍 PYTHONHOME = %s", python_home);
-    LOGP("🐍 PYTHONPATH = %s", python_path);
-    LOG("start.c", "✅ PYTHONHOME und PYTHONPATH gesetzt (explizit)");
+    LOGP("🐍 PYTHONHOME = %s (SDL2-Stil)", python_home);
+    LOGP("🐍 PYTHONPATH = %s (SDL2-Stil)", python_path);
+    LOG("start.c", "✅ PYTHONHOME und PYTHONPATH gesetzt (SDL2-Stil)");
 
     // ============================================================
-    // ★ ★ ★ PYTHON INIT (MIT ALLEN FIXES) ★ ★ ★
+    // ★ ★ ★ PYTHON INIT ★ ★ ★
     // ============================================================
     #if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= P4A_MIN_VER
         PyConfig config;
@@ -454,7 +450,7 @@ int main(int argc, char *argv[]) {
             config.home = wchar_home;
             config.prefix = wchar_home;
             config.exec_prefix = wchar_home;
-            LOGP("✅ config.home = %s", python_home);
+            LOGP("✅ config.home = %s (SDL2-Stil)", python_home);
         } else {
             LOGE("❌ Py_DecodeLocale failed for PYTHONHOME");
             LOG("start.c", "❌ Py_DecodeLocale failed");
@@ -462,53 +458,44 @@ int main(int argc, char *argv[]) {
             return -1;
         }
 
-        // ★ ★ ★ ZUSÄTZLICHE CONFIG-FELDER (FIX!) ★ ★ ★
+        // ★ ★ ★ ZUSÄTZLICHE CONFIG-FELDER ★ ★ ★
         config.isolated = 0;
         config.site_import = 1;
         config.install_signal_handlers = 1;
         config.use_environment = 1;
-        config.filesystem_encoding = NULL;   // Automatisch erkennen
-        config.filesystem_errors = NULL;     // Automatisch erkennen
-        LOGP("✅ Zusätzliche config-Felder gesetzt (isolated, site_import, etc.)");
+        config.filesystem_encoding = NULL;
+        config.filesystem_errors = NULL;
+        LOGP("✅ Zusätzliche config-Felder gesetzt");
 
         // ★ ★ ★ config.module_search_paths SETZEN ★ ★ ★
         config.module_search_paths_set = 1;
 
         // stdlib.zip
         char stdlib_path[512];
-        snprintf(stdlib_path, sizeof(stdlib_path), "%s/stdlib.zip", python_bundle_dir);
+        snprintf(stdlib_path, sizeof(stdlib_path), "%s/_python_bundle/stdlib.zip", unpack_dir);
         wchar_t *wchar_stdlib = Py_DecodeLocale(stdlib_path, NULL);
         if (wchar_stdlib != NULL) {
             PyWideStringList_Append(&config.module_search_paths, wchar_stdlib);
             LOGP("✅ stdlib.zip: %s", stdlib_path);
-        } else {
-            LOGE("❌ Py_DecodeLocale failed for stdlib.zip");
         }
 
         // modules
         char modules_path[512];
-        snprintf(modules_path, sizeof(modules_path), "%s/modules", python_bundle_dir);
+        snprintf(modules_path, sizeof(modules_path), "%s/_python_bundle/modules", unpack_dir);
         wchar_t *wchar_modules = Py_DecodeLocale(modules_path, NULL);
         if (wchar_modules != NULL) {
             PyWideStringList_Append(&config.module_search_paths, wchar_modules);
             LOGP("✅ modules: %s", modules_path);
-        } else {
-            LOGE("❌ Py_DecodeLocale failed for modules");
         }
 
         // site-packages
         char site_packages_path[512];
-        snprintf(site_packages_path, sizeof(site_packages_path), "%s/site-packages", python_bundle_dir);
+        snprintf(site_packages_path, sizeof(site_packages_path), "%s/_python_bundle/site-packages", unpack_dir);
         wchar_t *wchar_site = Py_DecodeLocale(site_packages_path, NULL);
         if (wchar_site != NULL) {
             PyWideStringList_Append(&config.module_search_paths, wchar_site);
             LOGP("✅ site-packages: %s", site_packages_path);
-        } else {
-            LOGE("❌ Py_DecodeLocale failed for site-packages");
         }
-
-        // ★ ★ ★ PYTHONUTF8 setzen ★ ★ ★
-        setenv("PYTHONUTF8", "1", 1);
 
         // ★ ★ ★ DEBUG: config vor Initialize ausgeben ★ ★ ★
         LOGP("🔍 config.isolated = %d", config.isolated);
@@ -523,7 +510,7 @@ int main(int argc, char *argv[]) {
             LOGP("Python initialization failed:");
             LOGP(status.err_msg);
             LOG("start.c", "❌ Python initialization failed");
-            // Fallback: Py_Initialize() ohne config
+            // Fallback: Py_Initialize()
             Py_Initialize();
             LOGP("✅ Fallback: Py_Initialize() used");
             LOG("start.c", "✅ Fallback: Py_Initialize() used");
@@ -558,13 +545,18 @@ int main(int argc, char *argv[]) {
 
     char add_site_packages_dir[256];
 
-    if (dir_exists(python_bundle_dir)) {
-        LOGP("✅ _python_bundle dir exists");
-        LOG("start.c", "✅ _python_bundle dir exists");
+    // ★ ★ ★ SITE-PACKAGES PFAD ANPASSEN ★ ★ ★
+    char site_packages_full[512];
+    snprintf(site_packages_full, sizeof(site_packages_full),
+             "%s/_python_bundle/site-packages", unpack_dir);
+
+    if (dir_exists(site_packages_full)) {
+        LOGP("✅ site-packages dir exists");
+        LOG("start.c", "✅ site-packages dir exists");
         
         snprintf(add_site_packages_dir, 256,
-                 "sys.path.append('%s/site-packages')",
-                 python_bundle_dir);
+                 "sys.path.append('%s')",
+                 site_packages_full);
 
         PyRun_SimpleString("import sys, os\n"
                           "from os.path import realpath, join, dirname");
@@ -581,10 +573,8 @@ int main(int argc, char *argv[]) {
         PyRun_SimpleString("os.environ['PYTHONPATH'] = ':'.join(sys.path)");
         LOG("start.c", "✅ sys.path configured");
     } else {
-        LOGE("❌ _python_bundle does NOT exist!");
-        LOG("start.c", "❌ _python_bundle does NOT exist");
-        close_log_file();
-        return -1;
+        LOGE("❌ site-packages does NOT exist!");
+        LOG("start.c", "❌ site-packages does NOT exist");
     }
 
     PyRun_SimpleString(
