@@ -1,0 +1,1691 @@
+
+package org.qtproject.qt.android.bindings;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.FileOutputStream;
+import java.io.FileInputStream;
+import java.io.DataOutputStream;
+import java.io.DataInputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+import org.kde.necessitas.ministro.IMinistro;
+import org.kde.necessitas.ministro.IMinistroCallback;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
+import android.content.pm.PackageInfo;
+import android.content.res.Configuration;
+import android.content.res.Resources.Theme;
+import android.content.res.AssetManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.ColorDrawable;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.IBinder;
+import android.os.RemoteException;
+import android.util.AttributeSet;
+import android.util.Log;
+import android.view.ContextMenu;
+import android.view.ContextMenu.ContextMenuInfo;
+import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowManager.LayoutParams;
+import android.view.accessibility.AccessibilityEvent;
+import dalvik.system.DexClassLoader;
+
+// ★ ★ ★ SHOWLOG IMPORT ★ ★ ★
+import org.kivy.android.PythonService;
+
+//@ANDROID-11
+import android.app.Fragment;
+import android.view.ActionMode;
+import android.view.ActionMode.Callback;
+//@ANDROID-11
+import java.lang.reflect.InvocationTargetException;
+
+
+public class QtActivity extends Activity
+{
+    private final static int MINISTRO_INSTALL_REQUEST_CODE = 0xf3ee;
+    private static final int MINISTRO_API_LEVEL = 5;
+    private static final int NECESSITAS_API_LEVEL = 2;
+    private static final int QT_VERSION = 0x050100;
+
+    private static final String ERROR_CODE_KEY = "error.code";
+    private static final String ERROR_MESSAGE_KEY = "error.message";
+    private static final String DEX_PATH_KEY = "dex.path";
+    private static final String LIB_PATH_KEY = "lib.path";
+    private static final String LOADER_CLASS_NAME_KEY = "loader.class.name";
+    private static final String NATIVE_LIBRARIES_KEY = "native.libraries";
+    private static final String ENVIRONMENT_VARIABLES_KEY = "environment.variables";
+    private static final String APPLICATION_PARAMETERS_KEY = "application.parameters";
+    private static final String BUNDLED_LIBRARIES_KEY = "bundled.libraries";
+    private static final String BUNDLED_IN_LIB_RESOURCE_ID_KEY = "android.app.bundled_in_lib_resource_id";
+    private static final String BUNDLED_IN_ASSETS_RESOURCE_ID_KEY = "android.app.bundled_in_assets_resource_id";
+    private static final String MAIN_LIBRARY_KEY = "main.library";
+    private static final String STATIC_INIT_CLASSES_KEY = "static.init.classes";
+    private static final String NECESSITAS_API_LEVEL_KEY = "necessitas.api.level";
+    private static final String EXTRACT_STYLE_KEY = "extract.android.style";
+
+    /// Ministro server parameter keys
+    private static final String REQUIRED_MODULES_KEY = "required.modules";
+    private static final String APPLICATION_TITLE_KEY = "application.title";
+    private static final String MINIMUM_MINISTRO_API_KEY = "minimum.ministro.api";
+    private static final String MINIMUM_QT_VERSION_KEY = "minimum.qt.version";
+    private static final String SOURCES_KEY = "sources";
+    private static final String REPOSITORY_KEY = "repository";
+    private static final String ANDROID_THEMES_KEY = "android.themes";
+
+    public String APPLICATION_PARAMETERS = null;
+    public String ENVIRONMENT_VARIABLES = "QT_USE_ANDROID_NATIVE_STYLE=1\tQT_USE_ANDROID_NATIVE_DIALOGS=1\t";
+    public String[] QT_ANDROID_THEMES = null;
+    public String QT_ANDROID_DEFAULT_THEME = null;
+
+    private static final int INCOMPATIBLE_MINISTRO_VERSION = 1;
+    private static final int BUFFER_SIZE = 1024;
+
+    private ActivityInfo m_activityInfo = null;
+    private DexClassLoader m_classLoader = null;
+    private String[] m_sources = {"https://download.qt-project.org/ministro/android/qt5/qt-5.2"};
+    private String m_repository = "default";
+    private String[] m_qtLibs = null;
+    private int m_displayDensity = -1;
+
+    // ============================================================
+    // ★ ★ ★ SHOWLOG (VERWENDET PythonService.showLog) ★ ★ ★
+    // ============================================================
+    private static void showLog(String title, String message) {
+        // 1. Android Logcat
+        Log.d("QtActivity", "📌 " + title + ": " + message);
+        
+        // 2. PythonService.showLog verwenden (für einheitliche Logs)
+        PythonService.showLog("QtActivity", title + ": " + message);
+    }
+
+    public QtActivity()
+    {
+        showLog("QtActivity", "🏗️ Konstruktor aufgerufen");
+        
+        if (Build.VERSION.SDK_INT <= 10) {
+            QT_ANDROID_THEMES = new String[] {"Theme_Light"};
+            QT_ANDROID_DEFAULT_THEME = "Theme_Light";
+        }
+        else if ((Build.VERSION.SDK_INT >= 11 && Build.VERSION.SDK_INT <= 13) || Build.VERSION.SDK_INT == 21){
+            QT_ANDROID_THEMES = new String[] {"Theme_Holo_Light"};
+            QT_ANDROID_DEFAULT_THEME = "Theme_Holo_Light";
+        } else {
+            QT_ANDROID_THEMES = new String[] {"Theme_DeviceDefault_Light"};
+            QT_ANDROID_DEFAULT_THEME = "Theme_DeviceDefault_Light";
+        }
+        
+        showLog("QtActivity", "📱 Android API: " + Build.VERSION.SDK_INT + ", Theme: " + QT_ANDROID_DEFAULT_THEME);
+    }
+
+    // this function is used to load and start the loader
+    private void loadApplication(Bundle loaderParams)
+    {
+        showLog("loadApplication", "📦 Lade Application...");
+        
+        try {
+            final int errorCode = loaderParams.getInt(ERROR_CODE_KEY);
+            showLog("loadApplication", "📊 Error Code: " + errorCode);
+            
+            if (errorCode != 0) {
+                showLog("loadApplication", "⚠️ Fehler: " + errorCode);
+                if (errorCode == INCOMPATIBLE_MINISTRO_VERSION) {
+                    showLog("loadApplication", "🔄 Inkompatible Ministro Version");
+                    downloadUpgradeMinistro(loaderParams.getString(ERROR_MESSAGE_KEY));
+                    return;
+                }
+
+                // fatal error, show the error and quit
+                showLog("loadApplication", "❌ Fataler Fehler: " + loaderParams.getString(ERROR_MESSAGE_KEY));
+                AlertDialog errorDialog = new AlertDialog.Builder(QtActivity.this).create();
+                errorDialog.setMessage(loaderParams.getString(ERROR_MESSAGE_KEY));
+                errorDialog.setButton(getResources().getString(android.R.string.ok), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        showLog("loadApplication", "🗑️ Dialog geschlossen, beende App");
+                        finish();
+                    }
+                });
+                errorDialog.show();
+                return;
+            }
+
+            // add all bundled Qt libs to loader params
+            ArrayList<String> libs = new ArrayList<String>();
+            if ( m_activityInfo.metaData.containsKey("android.app.bundled_libs_resource_id") ) {
+                libs.addAll(Arrays.asList(getResources().getStringArray(m_activityInfo.metaData.getInt("android.app.bundled_libs_resource_id"))));
+                showLog("loadApplication", "📚 Bundled Libs: " + libs.size());
+            }
+
+            String libName = null;
+            if ( m_activityInfo.metaData.containsKey("android.app.lib_name") ) {
+                libName = m_activityInfo.metaData.getString("android.app.lib_name");
+                loaderParams.putString(MAIN_LIBRARY_KEY, libName); //main library contains main() function
+                showLog("loadApplication", "📚 Main Library (lib_name): " + libName);
+            } else {
+                showLog("loadApplication", "⚠️ Kein android.app.lib_name im Manifest gefunden!");
+            }
+
+            loaderParams.putStringArrayList(BUNDLED_LIBRARIES_KEY, libs);
+            loaderParams.putInt(NECESSITAS_API_LEVEL_KEY, NECESSITAS_API_LEVEL);
+
+            // load and start QtLoader class
+            showLog("loadApplication", "🔧 Lade QtLoader...");
+            String loaderClassName = loaderParams.getString(LOADER_CLASS_NAME_KEY);
+            showLog("loadApplication", "📚 Loader Class Name: " + loaderClassName);
+            
+            m_classLoader = new DexClassLoader(loaderParams.getString(DEX_PATH_KEY), // .jar/.apk files
+                                               getDir("outdex", Context.MODE_PRIVATE).getAbsolutePath(), // directory where optimized DEX files should be written.
+                                               loaderParams.containsKey(LIB_PATH_KEY) ? loaderParams.getString(LIB_PATH_KEY) : null, // libs folder (if exists)
+                                               getClassLoader()); // parent loader
+
+            @SuppressWarnings("rawtypes")
+            Class loaderClass = m_classLoader.loadClass(loaderClassName); // load QtLoader class
+            showLog("loadApplication", "✅ QtLoader Klasse geladen: " + loaderClassName);
+            
+            // Vor dem try-Block:
+            Object qtLoader = null;
+            
+            try {
+    // Versuche den parameterlosen Konstruktor
+    qtLoader = loaderClass.getDeclaredConstructor().newInstance();
+    showLog("loadApplication", "✅ QtLoader Instanz erstellt");
+} catch (NoSuchMethodException e) {
+    showLog("loadApplication", "❌ Kein parameterloser Konstruktor gefunden!");
+    throw e;
+} catch (IllegalAccessException e) {
+    showLog("loadApplication", "❌ Konstruktor ist nicht öffentlich!");
+    throw e;
+} catch (InstantiationException e) {
+    showLog("loadApplication", "❌ Klasse ist abstrakt oder hat keinen Konstruktor!");
+    throw e;
+} catch (InvocationTargetException e) {
+    showLog("loadApplication", "❌ Konstruktor hat eine Exception geworfen!");
+    throw e;
+}
+            
+            
+            Method perpareAppMethod = qtLoader.getClass().getMethod("loadApplication",
+                                                                    Activity.class,
+                                                                    ClassLoader.class,
+                                                                    Bundle.class);
+            showLog("loadApplication", "🔧 Rufe loadApplication() auf...");
+            if (!(Boolean)perpareAppMethod.invoke(qtLoader, this, m_classLoader, loaderParams)) {
+                showLog("loadApplication", "❌ loadApplication fehlgeschlagen");
+                throw new Exception("");
+            }
+
+            showLog("loadApplication", "✅ QtLoader geladen");
+            QtApplication.setQtActivityDelegate(qtLoader);
+
+            // now load the application library so it's accessible from this class loader
+            if (libName != null) {
+                showLog("loadApplication", "📚 Lade native Bibliothek: " + libName);
+                showLog("loadApplication", "🔧 System.loadLibrary(" + libName + ") wird aufgerufen...");
+                System.loadLibrary(libName);
+                showLog("loadApplication", "✅ System.loadLibrary(" + libName + ") erfolgreich!");
+            } else {
+                showLog("loadApplication", "⚠️ Kein lib_name gesetzt – überspringe System.loadLibrary()");
+            }
+
+            Method startAppMethod=qtLoader.getClass().getMethod("startApplication");
+            showLog("loadApplication", "🔧 Rufe startApplication() auf...");
+            if (!(Boolean)startAppMethod.invoke(qtLoader)) {
+                showLog("loadApplication", "❌ startApplication fehlgeschlagen");
+                throw new Exception("");
+            }
+            
+            showLog("loadApplication", "✅ Application erfolgreich geladen und gestartet");
+
+        } catch (Exception e) {
+            showLog("loadApplication", "❌ Fehler: " + e.getMessage());
+            e.printStackTrace();
+            AlertDialog errorDialog = new AlertDialog.Builder(QtActivity.this).create();
+            if (m_activityInfo.metaData.containsKey("android.app.fatal_error_msg"))
+                errorDialog.setMessage(m_activityInfo.metaData.getString("android.app.fatal_error_msg"));
+            else
+                errorDialog.setMessage("Fatal error, your application can't be started.");
+
+            errorDialog.setButton(getResources().getString(android.R.string.ok), new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    showLog("loadApplication", "🗑️ Fehlerdialog geschlossen");
+                    finish();
+                }
+            });
+            errorDialog.show();
+        }
+    }
+
+    private ServiceConnection m_ministroConnection=new ServiceConnection() {
+        private IMinistro m_service = null;
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service)
+        {
+            showLog("m_ministroConnection", "🔗 Ministro Service verbunden");
+            m_service = IMinistro.Stub.asInterface(service);
+            try {
+                if (m_service != null) {
+                    showLog("m_ministroConnection", "📤 Sende Anfrage an Ministro...");
+                    Bundle parameters = new Bundle();
+                    parameters.putStringArray(REQUIRED_MODULES_KEY, m_qtLibs);
+                    parameters.putString(APPLICATION_TITLE_KEY, (String)QtActivity.this.getTitle());
+                    parameters.putInt(MINIMUM_MINISTRO_API_KEY, MINISTRO_API_LEVEL);
+                    parameters.putInt(MINIMUM_QT_VERSION_KEY, QT_VERSION);
+                    parameters.putString(ENVIRONMENT_VARIABLES_KEY, ENVIRONMENT_VARIABLES);
+                    if (APPLICATION_PARAMETERS != null)
+                        parameters.putString(APPLICATION_PARAMETERS_KEY, APPLICATION_PARAMETERS);
+                    parameters.putStringArray(SOURCES_KEY, m_sources);
+                    parameters.putString(REPOSITORY_KEY, m_repository);
+                    if (QT_ANDROID_THEMES != null)
+                        parameters.putStringArray(ANDROID_THEMES_KEY, QT_ANDROID_THEMES);
+                    m_service.requestLoader(m_ministroCallback, parameters);
+                    showLog("m_ministroConnection", "📤 Ministro Anfrage gesendet");
+                }
+            } catch (RemoteException e) {
+                showLog("m_ministroConnection", "❌ RemoteException: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+
+        private IMinistroCallback m_ministroCallback = new IMinistroCallback.Stub() {
+            // this function is called back by Ministro.
+            @Override
+            public void loaderReady(final Bundle loaderParams) throws RemoteException {
+                showLog("m_ministroCallback", "📦 Ministro Antwort empfangen");
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        showLog("m_ministroCallback", "🔌 Unbind Ministro Service");
+                        unbindService(m_ministroConnection);
+                        loadApplication(loaderParams);
+                    }
+                });
+            }
+        };
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            showLog("m_ministroConnection", "🔌 Ministro Service getrennt");
+            m_service = null;
+        }
+    };
+
+    private void downloadUpgradeMinistro(String msg)
+    {
+        showLog("downloadUpgradeMinistro", "📥 Lade Ministro Upgrade...");
+        
+        AlertDialog.Builder downloadDialog = new AlertDialog.Builder(this);
+        downloadDialog.setMessage(msg);
+        downloadDialog.setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                showLog("downloadUpgradeMinistro", "✅ Upgrade bestätigt");
+                try {
+                    Uri uri = Uri.parse("market://search?q=pname:org.kde.necessitas.ministro");
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    startActivityForResult(intent, MINISTRO_INSTALL_REQUEST_CODE);
+                } catch (Exception e) {
+                    showLog("downloadUpgradeMinistro", "❌ Fehler: " + e.getMessage());
+                    e.printStackTrace();
+                    ministroNotFound();
+                }
+            }
+        });
+
+        downloadDialog.setNegativeButton(android.R.string.no, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialogInterface, int i) {
+                showLog("downloadUpgradeMinistro", "❌ Upgrade abgelehnt, beende App");
+                QtActivity.this.finish();
+            }
+        });
+        downloadDialog.show();
+    }
+
+    private void ministroNotFound()
+    {
+        showLog("ministroNotFound", "❌ Ministro Service nicht gefunden");
+        
+        AlertDialog errorDialog = new AlertDialog.Builder(QtActivity.this).create();
+
+        if (m_activityInfo.metaData.containsKey("android.app.ministro_not_found_msg"))
+            errorDialog.setMessage(m_activityInfo.metaData.getString("android.app.ministro_not_found_msg"));
+        else
+            errorDialog.setMessage("Can't find Ministro service.\nThe application can't start.");
+
+        errorDialog.setButton(getResources().getString(android.R.string.ok), new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                showLog("ministroNotFound", "🗑️ Dialog geschlossen");
+                finish();
+            }
+        });
+        errorDialog.show();
+    }
+
+    static private void copyFile(InputStream inputStream, OutputStream outputStream)
+        throws IOException
+    {
+        byte[] buffer = new byte[BUFFER_SIZE];
+
+        int count;
+        while ((count = inputStream.read(buffer)) > 0)
+            outputStream.write(buffer, 0, count);
+    }
+
+
+    private void copyAsset(String source, String destination)
+        throws IOException
+    {
+        showLog("copyAsset", "📁 Kopiere: " + source + " → " + destination);
+        
+        // Already exists, we don't have to do anything
+        File destinationFile = new File(destination);
+        if (destinationFile.exists()) {
+            showLog("copyAsset", "⏭️ Datei existiert bereits");
+            return;
+        }
+
+        File parentDirectory = destinationFile.getParentFile();
+        if (!parentDirectory.exists()) {
+            showLog("copyAsset", "📁 Erstelle Verzeichnis: " + parentDirectory.getAbsolutePath());
+            parentDirectory.mkdirs();
+        }
+
+        destinationFile.createNewFile();
+
+        AssetManager assetsManager = getAssets();
+        InputStream inputStream = assetsManager.open(source);
+        OutputStream outputStream = new FileOutputStream(destinationFile);
+        copyFile(inputStream, outputStream);
+
+        inputStream.close();
+        outputStream.close();
+        showLog("copyAsset", "✅ Kopiert");
+    }
+
+    private static void createBundledBinary(String source, String destination)
+        throws IOException
+    {
+        // Already exists, we don't have to do anything
+        File destinationFile = new File(destination);
+        if (destinationFile.exists())
+            return;
+
+        File parentDirectory = destinationFile.getParentFile();
+        if (!parentDirectory.exists())
+            parentDirectory.mkdirs();
+
+        destinationFile.createNewFile();
+
+        InputStream inputStream = new FileInputStream(source);
+        OutputStream outputStream = new FileOutputStream(destinationFile);
+        copyFile(inputStream, outputStream);
+
+        inputStream.close();
+        outputStream.close();
+    }
+
+    private boolean cleanCacheIfNecessary(String pluginsPrefix, long packageVersion)
+    {
+        File versionFile = new File(pluginsPrefix + "cache.version");
+
+        long cacheVersion = 0;
+        if (versionFile.exists() && versionFile.canRead()) {
+            try {
+                DataInputStream inputStream = new DataInputStream(new FileInputStream(versionFile));
+                cacheVersion = inputStream.readLong();
+                inputStream.close();
+             } catch (Exception e) {
+                showLog("cleanCacheIfNecessary", "❌ Fehler beim Lesen der Cache-Version: " + e.getMessage());
+                e.printStackTrace();
+             }
+        }
+
+        if (cacheVersion != packageVersion) {
+            showLog("cleanCacheIfNecessary", "🗑️ Lösche Cache (Version unterschiedlich)");
+            deleteRecursively(new File(pluginsPrefix));
+            return true;
+        } else {
+            showLog("cleanCacheIfNecessary", "⏭️ Cache ist aktuell");
+            return false;
+        }
+    }
+
+    private void extractBundledPluginsAndImports(String pluginsPrefix)
+        throws IOException
+    {
+        showLog("extractBundledPluginsAndImports", "📦 Extrahiere Plugins nach: " + pluginsPrefix);
+        
+        ArrayList<String> libs = new ArrayList<String>();
+
+        String dataDir = getApplicationInfo().dataDir + "/";
+
+        long packageVersion = -1;
+        try {
+            PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            packageVersion = packageInfo.lastUpdateTime;
+            showLog("extractBundledPluginsAndImports", "📦 Package Version: " + packageVersion);
+        } catch (Exception e) {
+            showLog("extractBundledPluginsAndImports", "❌ Fehler beim Lesen der Package Info");
+            e.printStackTrace();
+        }
+
+        if (!cleanCacheIfNecessary(pluginsPrefix, packageVersion))
+            return;
+
+        {
+            File versionFile = new File(pluginsPrefix + "cache.version");
+
+            File parentDirectory = versionFile.getParentFile();
+            if (!parentDirectory.exists())
+                parentDirectory.mkdirs();
+
+            versionFile.createNewFile();
+
+            DataOutputStream outputStream = new DataOutputStream(new FileOutputStream(versionFile));
+            outputStream.writeLong(packageVersion);
+            outputStream.close();
+            showLog("extractBundledPluginsAndImports", "✅ Version-Datei geschrieben");
+        }
+
+        {
+            String key = BUNDLED_IN_LIB_RESOURCE_ID_KEY;
+            java.util.Set<String> keys = m_activityInfo.metaData.keySet();
+            if (m_activityInfo.metaData.containsKey(key)) {
+                String[] list = getResources().getStringArray(m_activityInfo.metaData.getInt(key));
+
+                for (String bundledImportBinary : list) {
+                    String[] split = bundledImportBinary.split(":");
+                    String sourceFileName = dataDir + "lib/" + split[0];
+                    String destinationFileName = pluginsPrefix + split[1];
+                    createBundledBinary(sourceFileName, destinationFileName);
+                    showLog("extractBundledPluginsAndImports", "📁 Extrahiere: " + sourceFileName + " → " + destinationFileName);
+                }
+            }
+        }
+
+        {
+            String key = BUNDLED_IN_ASSETS_RESOURCE_ID_KEY;
+            if (m_activityInfo.metaData.containsKey(key)) {
+                String[] list = getResources().getStringArray(m_activityInfo.metaData.getInt(key));
+
+                for (String fileName : list) {
+                    String[] split = fileName.split(":");
+                    String sourceFileName = split[0];
+                    String destinationFileName = pluginsPrefix + split[1];
+                    copyAsset(sourceFileName, destinationFileName);
+                    showLog("extractBundledPluginsAndImports", "📁 Kopiere Asset: " + sourceFileName + " → " + destinationFileName);
+                }
+            }
+
+        }
+        
+        showLog("extractBundledPluginsAndImports", "✅ Plugins extrahiert");
+    }
+
+    private void deleteRecursively(File directory)
+    {
+        showLog("deleteRecursively", "🗑️ Lösche: " + directory.getAbsolutePath());
+        File[] files = directory.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory())
+                    deleteRecursively(file);
+                else
+                    file.delete();
+            }
+
+            directory.delete();
+        }
+        showLog("deleteRecursively", "✅ Gelöscht");
+    }
+
+    private void cleanOldCacheIfNecessary(String oldLocalPrefix, String localPrefix)
+    {
+        showLog("cleanOldCacheIfNecessary", "🧹 Bereinige alten Cache...");
+        File newCache = new File(localPrefix);
+        if (!newCache.exists()) {
+            {
+                File oldPluginsCache = new File(oldLocalPrefix + "plugins/");
+                if (oldPluginsCache.exists() && oldPluginsCache.isDirectory())
+                    deleteRecursively(oldPluginsCache);
+            }
+
+            {
+                File oldImportsCache = new File(oldLocalPrefix + "imports/");
+                if (oldImportsCache.exists() && oldImportsCache.isDirectory())
+                    deleteRecursively(oldImportsCache);
+            }
+
+            {
+                File oldQmlCache = new File(oldLocalPrefix + "qml/");
+                if (oldQmlCache.exists() && oldQmlCache.isDirectory())
+                    deleteRecursively(oldQmlCache);
+            }
+            showLog("cleanOldCacheIfNecessary", "✅ Alter Cache bereinigt");
+        } else {
+            showLog("cleanOldCacheIfNecessary", "⏭️ Neuer Cache existiert bereits");
+        }
+    }
+
+    private void startApp(final boolean firstStart)
+{
+    showLog("startApp", "🚀 Starte App (firstStart: " + firstStart + ")");
+    
+    try {
+        // 1. Qt-Quellen laden
+        if (m_activityInfo.metaData.containsKey("android.app.qt_sources_resource_id")) {
+            int resourceId = m_activityInfo.metaData.getInt("android.app.qt_sources_resource_id");
+            m_sources = getResources().getStringArray(resourceId);
+            showLog("startApp", "📦 Qt Sources: " + m_sources.length);
+        }
+
+        // 2. Qt-Bibliotheken laden
+        if (m_activityInfo.metaData.containsKey("android.app.qt_libs_resource_id")) {
+            int resourceId = m_activityInfo.metaData.getInt("android.app.qt_libs_resource_id");
+            m_qtLibs = getResources().getStringArray(resourceId);
+            showLog("startApp", "📚 Qt Libs: " + m_qtLibs.length);
+        }
+
+        // 3. 🔥 DIREKT LOKALE QT-INITIALISIERUNG (ohne Ministro!)
+        if (m_activityInfo.metaData.containsKey("android.app.use_local_qt_libs")
+                && m_activityInfo.metaData.getInt("android.app.use_local_qt_libs") == 1) {
+            showLog("startApp", "📚 Verwende lokale Qt Libs");
+            ArrayList<String> libraryList = new ArrayList<String>();
+
+            String localPrefix = "/data/local/tmp/qt/";
+            if (m_activityInfo.metaData.containsKey("android.app.libs_prefix"))
+                localPrefix = m_activityInfo.metaData.getString("android.app.libs_prefix");
+
+            String pluginsPrefix = localPrefix;
+
+            boolean bundlingQtLibs = false;
+            if (m_activityInfo.metaData.containsKey("android.app.bundle_local_qt_libs")
+                && m_activityInfo.metaData.getInt("android.app.bundle_local_qt_libs") == 1) {
+                showLog("startApp", "📦 Bündle lokale Qt Libs");
+                localPrefix = getApplicationInfo().dataDir + "/";
+                pluginsPrefix = localPrefix + "qt-reserved-files/";
+                cleanOldCacheIfNecessary(localPrefix, pluginsPrefix);
+                extractBundledPluginsAndImports(pluginsPrefix);
+                bundlingQtLibs = true;
+            }
+
+            // Library-Liste aufbauen
+            if (m_qtLibs != null) {
+                for (int i=0; i<m_qtLibs.length; i++) {
+                    libraryList.add(localPrefix + "lib/lib" + m_qtLibs[i] + ".so");
+                    showLog("startApp", "📚 Qt Lib: " + m_qtLibs[i]);
+                }
+            }
+
+            if (m_activityInfo.metaData.containsKey("android.app.load_local_libs")) {
+                String[] extraLibs = m_activityInfo.metaData.getString("android.app.load_local_libs").split(":");
+                for (String lib : extraLibs) {
+                    if (lib.length() > 0) {
+                        if (lib.startsWith("lib/"))
+                            libraryList.add(localPrefix + lib);
+                        else
+                            libraryList.add(pluginsPrefix + lib);
+                        showLog("startApp", "📚 Extra Lib: " + lib);
+                    }
+                }
+            }
+
+            // Dex-Pfade
+            String dexPaths = new String();
+            String pathSeparator = System.getProperty("path.separator", ":");
+            if (!bundlingQtLibs && m_activityInfo.metaData.containsKey("android.app.load_local_jars")) {
+                String[] jarFiles = m_activityInfo.metaData.getString("android.app.load_local_jars").split(":");
+                for (String jar : jarFiles) {
+                    if (jar.length() > 0) {
+                        if (dexPaths.length() > 0)
+                            dexPaths += pathSeparator;
+                        dexPaths += localPrefix + jar;
+                        showLog("startApp", "📦 JAR: " + jar);
+                    }
+                }
+            }
+
+            // Loader-Parameter zusammenstellen
+            Bundle loaderParams = new Bundle();
+            loaderParams.putInt(ERROR_CODE_KEY, 0);
+            loaderParams.putString(DEX_PATH_KEY, dexPaths);
+            
+            //vorher qt5 auf qt geandert
+            //ic 
+            loaderParams.putString(LOADER_CLASS_NAME_KEY, "org.qtproject.qt.android.QtActivityDelegate");
+            if (m_activityInfo.metaData.containsKey("android.app.static_init_classes")) {
+                loaderParams.putStringArray(STATIC_INIT_CLASSES_KEY,
+                                            m_activityInfo.metaData.getString("android.app.static_init_classes").split(":"));
+                showLog("startApp", "📚 Static Init Classes: " + m_activityInfo.metaData.getString("android.app.static_init_classes"));
+            }
+            loaderParams.putStringArrayList(NATIVE_LIBRARIES_KEY, libraryList);
+
+            // Theme-Pfad
+            String themePath = getApplicationInfo().dataDir + "/qt-reserved-files/android-style/";
+            String stylePath = themePath + m_displayDensity + "/";
+            if (!(new File(stylePath)).exists())
+                loaderParams.putString(EXTRACT_STYLE_KEY, stylePath);
+            ENVIRONMENT_VARIABLES += "\tMINISTRO_ANDROID_STYLE_PATH=" + stylePath
+                                   + "\tQT_ANDROID_THEMES_ROOT_PATH=" + themePath;
+
+            loaderParams.putString(ENVIRONMENT_VARIABLES_KEY, ENVIRONMENT_VARIABLES
+                                                              + "\tQML2_IMPORT_PATH=" + pluginsPrefix + "/qml"
+                                                              + "\tQML_IMPORT_PATH=" + pluginsPrefix + "/imports"
+                                                              + "\tQT_PLUGIN_PATH=" + pluginsPrefix + "/plugins");
+
+            if (APPLICATION_PARAMETERS != null) {
+                loaderParams.putString(APPLICATION_PARAMETERS_KEY, APPLICATION_PARAMETERS);
+                showLog("startApp", "📚 Application Parameters: " + APPLICATION_PARAMETERS);
+            } else {
+                Intent intent = getIntent();
+                if (intent != null) {
+                    String parameters = intent.getStringExtra("applicationArguments");
+                    if (parameters != null) {
+                        loaderParams.putString(APPLICATION_PARAMETERS_KEY, parameters.replace(' ', '\t'));
+                        showLog("startApp", "📚 Application Arguments: " + parameters);
+                    }
+                }
+            }
+
+            // 🔥 Direkt loadApplication() aufrufen (OHNE Ministro!)
+            loadApplication(loaderParams);
+            return;
+        }
+
+        // Fallback: Zeige Fehler, wenn keine lokalen Qt-Libs verwendet werden
+        showLog("startApp", "❌ Keine lokalen Qt-Libs konfiguriert!");
+        AlertDialog errorDialog = new AlertDialog.Builder(QtActivity.this).create();
+        errorDialog.setMessage("Keine Qt-Bibliotheken gefunden!");
+        errorDialog.setButton(getResources().getString(android.R.string.ok), new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                finish();
+            }
+        });
+        errorDialog.show();
+
+    } catch (Exception e) {
+        showLog("startApp", "❌ Fehler: " + e.getMessage());
+        e.printStackTrace();
+    }
+}
+
+
+
+
+
+
+    /////////////////////////// forward all notifications ////////////////////////////
+    /////////////////////////// Super class calls ////////////////////////////////////
+    /////////////// PLEASE DO NOT CHANGE THE FOLLOWING CODE //////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event)
+    {
+        if (QtApplication.m_delegateObject != null && QtApplication.dispatchKeyEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.dispatchKeyEvent, event);
+        else
+            return super.dispatchKeyEvent(event);
+    }
+    public boolean super_dispatchKeyEvent(KeyEvent event)
+    {
+        return super.dispatchKeyEvent(event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event)
+    {
+        if (QtApplication.m_delegateObject != null && QtApplication.dispatchPopulateAccessibilityEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.dispatchPopulateAccessibilityEvent, event);
+        else
+            return super.dispatchPopulateAccessibilityEvent(event);
+    }
+    public boolean super_dispatchPopulateAccessibilityEvent(AccessibilityEvent event)
+    {
+        return super_dispatchPopulateAccessibilityEvent(event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev)
+    {
+        if (QtApplication.m_delegateObject != null && QtApplication.dispatchTouchEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.dispatchTouchEvent, ev);
+        else
+            return super.dispatchTouchEvent(ev);
+    }
+    public boolean super_dispatchTouchEvent(MotionEvent event)
+    {
+        return super.dispatchTouchEvent(event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean dispatchTrackballEvent(MotionEvent ev)
+    {
+        if (QtApplication.m_delegateObject != null && QtApplication.dispatchTrackballEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.dispatchTrackballEvent, ev);
+        else
+            return super.dispatchTrackballEvent(ev);
+    }
+    public boolean super_dispatchTrackballEvent(MotionEvent event)
+    {
+        return super.dispatchTrackballEvent(event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data)
+    {
+        showLog("onActivityResult", "📨 onActivityResult: " + requestCode + ", " + resultCode);
+
+        if (QtApplication.m_delegateObject != null && QtApplication.onActivityResult != null) {
+            QtApplication.invokeDelegateMethod(QtApplication.onActivityResult, requestCode, resultCode, data);
+            return;
+        }
+        if (requestCode == MINISTRO_INSTALL_REQUEST_CODE) {
+            showLog("onActivityResult", "📦 Ministro Installation result: " + resultCode);
+            startApp(false);
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+    public void super_onActivityResult(int requestCode, int resultCode, Intent data)
+    {
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onApplyThemeResource(Theme theme, int resid, boolean first)
+    {
+        if (!QtApplication.invokeDelegate(theme, resid, first).invoked)
+            super.onApplyThemeResource(theme, resid, first);
+    }
+    public void super_onApplyThemeResource(Theme theme, int resid, boolean first)
+    {
+        super.onApplyThemeResource(theme, resid, first);
+    }
+    //---------------------------------------------------------------------------
+
+
+    @Override
+    protected void onChildTitleChanged(Activity childActivity, CharSequence title)
+    {
+        if (!QtApplication.invokeDelegate(childActivity, title).invoked)
+            super.onChildTitleChanged(childActivity, title);
+    }
+    public void super_onChildTitleChanged(Activity childActivity, CharSequence title)
+    {
+        super.onChildTitleChanged(childActivity, title);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig)
+    {
+        if (!QtApplication.invokeDelegate(newConfig).invoked)
+            super.onConfigurationChanged(newConfig);
+    }
+    public void super_onConfigurationChanged(Configuration newConfig)
+    {
+        super.onConfigurationChanged(newConfig);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onContentChanged()
+    {
+        if (!QtApplication.invokeDelegate().invoked)
+            super.onContentChanged();
+    }
+    public void super_onContentChanged()
+    {
+        super.onContentChanged();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onContextItemSelected(MenuItem item)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(item);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onContextItemSelected(item);
+    }
+    public boolean super_onContextItemSelected(MenuItem item)
+    {
+        return super.onContextItemSelected(item);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onContextMenuClosed(Menu menu)
+    {
+        if (!QtApplication.invokeDelegate(menu).invoked)
+            super.onContextMenuClosed(menu);
+    }
+    public void super_onContextMenuClosed(Menu menu)
+    {
+        super.onContextMenuClosed(menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onCreate(Bundle savedInstanceState)
+    {
+        showLog("onCreate", "🚀 QtActivity onCreate");
+        
+        // ★ ★ ★ Bundle prüfen (für null) ★ ★ ★
+        if (savedInstanceState == null) {
+            savedInstanceState = new Bundle();
+            showLog("onCreate", "📦 Bundle erstellt (war null)");
+        }
+        
+        super.onCreate(savedInstanceState);
+        showLog("onCreate", "✅ super.onCreate() abgeschlossen");
+
+        try {
+            m_activityInfo = getPackageManager().getActivityInfo(getComponentName(), PackageManager.GET_META_DATA);
+            showLog("onCreate", "📋 Activity Info geladen");
+            
+            for (Field f : Class.forName("android.R$style").getDeclaredFields()) {
+                if (f.getInt(null) == m_activityInfo.getThemeResource()) {
+                    QT_ANDROID_THEMES = new String[] {f.getName()};
+                    QT_ANDROID_DEFAULT_THEME = f.getName();
+                    showLog("onCreate", "🎨 Theme: " + f.getName());
+                }
+            }
+        } catch (Exception e) {
+            showLog("onCreate", "❌ Fehler beim Laden der Activity Info: " + e.getMessage());
+            e.printStackTrace();
+            finish();
+            return;
+        }
+
+        try {
+            setTheme(Class.forName("android.R$style").getDeclaredField(QT_ANDROID_DEFAULT_THEME).getInt(null));
+            showLog("onCreate", "🎨 Theme gesetzt: " + QT_ANDROID_DEFAULT_THEME);
+        } catch (Exception e) {
+            showLog("onCreate", "❌ Theme setzen fehlgeschlagen: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        if (Build.VERSION.SDK_INT > 10) {
+            try {
+                requestWindowFeature(Window.class.getField("FEATURE_ACTION_BAR").getInt(null));
+                showLog("onCreate", "🖥️ ActionBar aktiviert");
+            } catch (Exception e) {
+                showLog("onCreate", "⚠️ ActionBar nicht verfügbar");
+                e.printStackTrace();
+            }
+        } else {
+            requestWindowFeature(Window.FEATURE_NO_TITLE);
+            showLog("onCreate", "🖥️ NoTitle aktiviert (API < 11)");
+        }
+
+        if (QtApplication.m_delegateObject != null && QtApplication.onCreate != null) {
+            showLog("onCreate", "📞 Rufe QtApplication.onCreate Delegate auf");
+            QtApplication.invokeDelegateMethod(QtApplication.onCreate, savedInstanceState);
+            return;
+        }
+
+        m_displayDensity = getResources().getDisplayMetrics().densityDpi;
+        showLog("onCreate", "📱 Display DPI: " + m_displayDensity);
+
+        ENVIRONMENT_VARIABLES += "\tQT_ANDROID_THEME=" + QT_ANDROID_DEFAULT_THEME
+                              + "/\tQT_ANDROID_THEME_DISPLAY_DPI=" + m_displayDensity + "\t";
+
+        if (null == getLastNonConfigurationInstance()) {
+            showLog("onCreate", "🔄 Keine gespeicherte Instanz, starte App...");
+            
+            // if splash screen is defined, then show it
+            if (m_activityInfo.metaData.containsKey("android.app.splash_screen_drawable")) {
+                getWindow().setBackgroundDrawableResource(m_activityInfo.metaData.getInt("android.app.splash_screen_drawable"));
+                showLog("onCreate", "🖼️ Splash Screen gesetzt");
+            } else {
+                getWindow().setBackgroundDrawable(new ColorDrawable(0xff000000));
+            }
+
+            if (m_activityInfo.metaData.containsKey("android.app.background_running")
+                && m_activityInfo.metaData.getBoolean("android.app.background_running")) {
+                ENVIRONMENT_VARIABLES += "QT_BLOCK_EVENT_LOOPS_WHEN_SUSPENDED=0\t";
+                showLog("onCreate", "🔄 Background Running aktiviert");
+            } else {
+                ENVIRONMENT_VARIABLES += "QT_BLOCK_EVENT_LOOPS_WHEN_SUSPENDED=1\t";
+                showLog("onCreate", "⏸️ Background Running deaktiviert");
+            }
+            startApp(true);
+        }
+        
+        showLog("onCreate", "✅ QtActivity onCreate abgeschlossen");
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo)
+    {
+        if (!QtApplication.invokeDelegate(menu, v, menuInfo).invoked)
+            super.onCreateContextMenu(menu, v, menuInfo);
+    }
+    public void super_onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo)
+    {
+        super.onCreateContextMenu(menu, v, menuInfo);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public CharSequence onCreateDescription()
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate();
+        if (res.invoked)
+            return (CharSequence)res.methodReturns;
+        else
+            return super.onCreateDescription();
+    }
+    public CharSequence super_onCreateDescription()
+    {
+        return super.onCreateDescription();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected Dialog onCreateDialog(int id)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(id);
+        if (res.invoked)
+            return (Dialog)res.methodReturns;
+        else
+            return super.onCreateDialog(id);
+    }
+    public Dialog super_onCreateDialog(int id)
+    {
+        return super.onCreateDialog(id);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(menu);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onCreateOptionsMenu(menu);
+    }
+    public boolean super_onCreateOptionsMenu(Menu menu)
+    {
+        return super.onCreateOptionsMenu(menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onCreatePanelMenu(int featureId, Menu menu)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(featureId, menu);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onCreatePanelMenu(featureId, menu);
+    }
+    public boolean super_onCreatePanelMenu(int featureId, Menu menu)
+    {
+        return super.onCreatePanelMenu(featureId, menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public View onCreatePanelView(int featureId)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(featureId);
+        if (res.invoked)
+            return (View)res.methodReturns;
+        else
+            return super.onCreatePanelView(featureId);
+    }
+    public View super_onCreatePanelView(int featureId)
+    {
+        return super.onCreatePanelView(featureId);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onCreateThumbnail(Bitmap outBitmap, Canvas canvas)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(outBitmap, canvas);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onCreateThumbnail(outBitmap, canvas);
+    }
+    public boolean super_onCreateThumbnail(Bitmap outBitmap, Canvas canvas)
+    {
+        return super.onCreateThumbnail(outBitmap, canvas);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public View onCreateView(String name, Context context, AttributeSet attrs)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(name, context, attrs);
+        if (res.invoked)
+            return (View)res.methodReturns;
+        else
+            return super.onCreateView(name, context, attrs);
+    }
+    public View super_onCreateView(String name, Context context, AttributeSet attrs)
+    {
+        return super.onCreateView(name, context, attrs);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onDestroy()
+    {
+        showLog("onDestroy", "🗑️ onDestroy");
+        super.onDestroy();
+        QtApplication.invokeDelegate();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event)
+    {
+        if (QtApplication.m_delegateObject != null && QtApplication.onKeyDown != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.onKeyDown, keyCode, event);
+        else
+            return super.onKeyDown(keyCode, event);
+    }
+    public boolean super_onKeyDown(int keyCode, KeyEvent event)
+    {
+        return super.onKeyDown(keyCode, event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event)
+    {
+        if (QtApplication.m_delegateObject != null && QtApplication.onKeyMultiple != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.onKeyMultiple, keyCode, repeatCount, event);
+        else
+            return super.onKeyMultiple(keyCode, repeatCount, event);
+    }
+    public boolean super_onKeyMultiple(int keyCode, int repeatCount, KeyEvent event)
+    {
+        return super.onKeyMultiple(keyCode, repeatCount, event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event)
+    {
+        if (QtApplication.m_delegateObject != null  && QtApplication.onKeyDown != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.onKeyUp, keyCode, event);
+        else
+            return super.onKeyUp(keyCode, event);
+    }
+    public boolean super_onKeyUp(int keyCode, KeyEvent event)
+    {
+        return super.onKeyUp(keyCode, event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onLowMemory()
+    {
+        if (!QtApplication.invokeDelegate().invoked)
+            super.onLowMemory();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onMenuItemSelected(int featureId, MenuItem item)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(featureId, item);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onMenuItemSelected(featureId, item);
+    }
+    public boolean super_onMenuItemSelected(int featureId, MenuItem item)
+    {
+        return super.onMenuItemSelected(featureId, item);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onMenuOpened(int featureId, Menu menu)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(featureId, menu);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onMenuOpened(featureId, menu);
+    }
+    public boolean super_onMenuOpened(int featureId, Menu menu)
+    {
+        return super.onMenuOpened(featureId, menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onNewIntent(Intent intent)
+    {
+        if (!QtApplication.invokeDelegate(intent).invoked)
+            super.onNewIntent(intent);
+    }
+    public void super_onNewIntent(Intent intent)
+    {
+        super.onNewIntent(intent);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(item);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onOptionsItemSelected(item);
+    }
+    public boolean super_onOptionsItemSelected(MenuItem item)
+    {
+        return super.onOptionsItemSelected(item);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onOptionsMenuClosed(Menu menu)
+    {
+        if (!QtApplication.invokeDelegate(menu).invoked)
+            super.onOptionsMenuClosed(menu);
+    }
+    public void super_onOptionsMenuClosed(Menu menu)
+    {
+        super.onOptionsMenuClosed(menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onPanelClosed(int featureId, Menu menu)
+    {
+        if (!QtApplication.invokeDelegate(featureId, menu).invoked)
+            super.onPanelClosed(featureId, menu);
+    }
+    public void super_onPanelClosed(int featureId, Menu menu)
+    {
+        super.onPanelClosed(featureId, menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onPause()
+    {
+        showLog("onPause", "⏸️ onPause");
+        super.onPause();
+        QtApplication.invokeDelegate();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onPostCreate(Bundle savedInstanceState)
+    {
+        super.onPostCreate(savedInstanceState);
+        QtApplication.invokeDelegate(savedInstanceState);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onPostResume()
+    {
+        super.onPostResume();
+        QtApplication.invokeDelegate();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onPrepareDialog(int id, Dialog dialog)
+    {
+        if (!QtApplication.invokeDelegate(id, dialog).invoked)
+            super.onPrepareDialog(id, dialog);
+    }
+    public void super_onPrepareDialog(int id, Dialog dialog)
+    {
+        super.onPrepareDialog(id, dialog);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(menu);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onPrepareOptionsMenu(menu);
+    }
+    public boolean super_onPrepareOptionsMenu(Menu menu)
+    {
+        return super.onPrepareOptionsMenu(menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onPreparePanel(int featureId, View view, Menu menu)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(featureId, view, menu);
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onPreparePanel(featureId, view, menu);
+    }
+    public boolean super_onPreparePanel(int featureId, View view, Menu menu)
+    {
+        return super.onPreparePanel(featureId, view, menu);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onRestart()
+    {
+        showLog("onRestart", "🔄 onRestart");
+        super.onRestart();
+        QtApplication.invokeDelegate();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState)
+    {
+        if (!QtApplication.invokeDelegate(savedInstanceState).invoked)
+            super.onRestoreInstanceState(savedInstanceState);
+    }
+    public void super_onRestoreInstanceState(Bundle savedInstanceState)
+    {
+        super.onRestoreInstanceState(savedInstanceState);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onResume()
+    {
+        showLog("onResume", "▶️ onResume");
+        super.onResume();
+        QtApplication.invokeDelegate();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public Object onRetainNonConfigurationInstance()
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate();
+        if (res.invoked)
+            return res.methodReturns;
+        else
+            return super.onRetainNonConfigurationInstance();
+    }
+    public Object super_onRetainNonConfigurationInstance()
+    {
+        return super.onRetainNonConfigurationInstance();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState)
+    {
+        if (!QtApplication.invokeDelegate(outState).invoked)
+            super.onSaveInstanceState(outState);
+    }
+    public void super_onSaveInstanceState(Bundle outState)
+    {
+        super.onSaveInstanceState(outState);
+
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onSearchRequested()
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate();
+        if (res.invoked)
+            return (Boolean)res.methodReturns;
+        else
+            return super.onSearchRequested();
+    }
+    public boolean super_onSearchRequested()
+    {
+        return super.onSearchRequested();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onStart()
+    {
+        showLog("onStart", "▶️ onStart");
+        super.onStart();
+        QtApplication.invokeDelegate();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onStop()
+    {
+        showLog("onStop", "⏹️ onStop");
+        super.onStop();
+        QtApplication.invokeDelegate();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onTitleChanged(CharSequence title, int color)
+    {
+        if (!QtApplication.invokeDelegate(title, color).invoked)
+            super.onTitleChanged(title, color);
+    }
+    public void super_onTitleChanged(CharSequence title, int color)
+    {
+        super.onTitleChanged(title, color);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event)
+    {
+        if (QtApplication.m_delegateObject != null  && QtApplication.onTouchEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.onTouchEvent, event);
+        else
+            return super.onTouchEvent(event);
+    }
+    public boolean super_onTouchEvent(MotionEvent event)
+    {
+        return super.onTouchEvent(event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onTrackballEvent(MotionEvent event)
+    {
+        if (QtApplication.m_delegateObject != null  && QtApplication.onTrackballEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.onTrackballEvent, event);
+        else
+            return super.onTrackballEvent(event);
+    }
+    public boolean super_onTrackballEvent(MotionEvent event)
+    {
+        return super.onTrackballEvent(event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onUserInteraction()
+    {
+        if (!QtApplication.invokeDelegate().invoked)
+            super.onUserInteraction();
+    }
+    public void super_onUserInteraction()
+    {
+        super.onUserInteraction();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onUserLeaveHint()
+    {
+        if (!QtApplication.invokeDelegate().invoked)
+            super.onUserLeaveHint();
+    }
+    public void super_onUserLeaveHint()
+    {
+        super.onUserLeaveHint();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onWindowAttributesChanged(LayoutParams params)
+    {
+        if (!QtApplication.invokeDelegate(params).invoked)
+            super.onWindowAttributesChanged(params);
+    }
+    public void super_onWindowAttributesChanged(LayoutParams params)
+    {
+        super.onWindowAttributesChanged(params);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus)
+    {
+        if (!QtApplication.invokeDelegate(hasFocus).invoked)
+            super.onWindowFocusChanged(hasFocus);
+    }
+    public void super_onWindowFocusChanged(boolean hasFocus)
+    {
+        super.onWindowFocusChanged(hasFocus);
+    }
+    //---------------------------------------------------------------------------
+
+    //////////////// Activity API 5 /////////////
+//@ANDROID-5
+    @Override
+    public void onAttachedToWindow()
+    {
+        if (!QtApplication.invokeDelegate().invoked)
+            super.onAttachedToWindow();
+    }
+    public void super_onAttachedToWindow()
+    {
+        super.onAttachedToWindow();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onBackPressed()
+    {
+        if (!QtApplication.invokeDelegate().invoked)
+            super.onBackPressed();
+    }
+    public void super_onBackPressed()
+    {
+        super.onBackPressed();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onDetachedFromWindow()
+    {
+        if (!QtApplication.invokeDelegate().invoked)
+            super.onDetachedFromWindow();
+    }
+    public void super_onDetachedFromWindow()
+    {
+        super.onDetachedFromWindow();
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onKeyLongPress(int keyCode, KeyEvent event)
+    {
+        if (QtApplication.m_delegateObject != null  && QtApplication.onKeyLongPress != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.onKeyLongPress, keyCode, event);
+        else
+            return super.onKeyLongPress(keyCode, event);
+    }
+    public boolean super_onKeyLongPress(int keyCode, KeyEvent event)
+    {
+        return super.onKeyLongPress(keyCode, event);
+    }
+    //---------------------------------------------------------------------------
+//@ANDROID-5
+
+//////////////// Activity API 8 /////////////
+//@ANDROID-8
+@Override
+    protected Dialog onCreateDialog(int id, Bundle args)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(id, args);
+        if (res.invoked)
+            return (Dialog)res.methodReturns;
+        else
+            return super.onCreateDialog(id, args);
+    }
+    public Dialog super_onCreateDialog(int id, Bundle args)
+    {
+        return super.onCreateDialog(id, args);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    protected void onPrepareDialog(int id, Dialog dialog, Bundle args)
+    {
+        if (!QtApplication.invokeDelegate(id, dialog, args).invoked)
+            super.onPrepareDialog(id, dialog, args);
+    }
+    public void super_onPrepareDialog(int id, Dialog dialog, Bundle args)
+    {
+        super.onPrepareDialog(id, dialog, args);
+    }
+    //---------------------------------------------------------------------------
+//@ANDROID-8
+    //////////////// Activity API 11 /////////////
+
+//@ANDROID-11
+    @Override
+    public boolean dispatchKeyShortcutEvent(KeyEvent event)
+    {
+        if (QtApplication.m_delegateObject != null  && QtApplication.dispatchKeyShortcutEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.dispatchKeyShortcutEvent, event);
+        else
+            return super.dispatchKeyShortcutEvent(event);
+    }
+    public boolean super_dispatchKeyShortcutEvent(KeyEvent event)
+    {
+        return super.dispatchKeyShortcutEvent(event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onActionModeFinished(ActionMode mode)
+    {
+        if (!QtApplication.invokeDelegate(mode).invoked)
+            super.onActionModeFinished(mode);
+    }
+    public void super_onActionModeFinished(ActionMode mode)
+    {
+        super.onActionModeFinished(mode);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onActionModeStarted(ActionMode mode)
+    {
+        if (!QtApplication.invokeDelegate(mode).invoked)
+            super.onActionModeStarted(mode);
+    }
+    public void super_onActionModeStarted(ActionMode mode)
+    {
+        super.onActionModeStarted(mode);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public void onAttachFragment(Fragment fragment)
+    {
+        if (!QtApplication.invokeDelegate(fragment).invoked)
+            super.onAttachFragment(fragment);
+    }
+    public void super_onAttachFragment(Fragment fragment)
+    {
+        super.onAttachFragment(fragment);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public View onCreateView(View parent, String name, Context context, AttributeSet attrs)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(parent, name, context, attrs);
+        if (res.invoked)
+            return (View)res.methodReturns;
+        else
+            return super.onCreateView(parent, name, context, attrs);
+    }
+    public View super_onCreateView(View parent, String name, Context context,
+            AttributeSet attrs) {
+        return super.onCreateView(parent, name, context, attrs);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public boolean onKeyShortcut(int keyCode, KeyEvent event)
+    {
+        if (QtApplication.m_delegateObject != null  && QtApplication.onKeyShortcut != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.onKeyShortcut, keyCode,event);
+        else
+            return super.onKeyShortcut(keyCode, event);
+    }
+    public boolean super_onKeyShortcut(int keyCode, KeyEvent event)
+    {
+        return super.onKeyShortcut(keyCode, event);
+    }
+    //---------------------------------------------------------------------------
+
+    @Override
+    public ActionMode onWindowStartingActionMode(Callback callback)
+    {
+        QtApplication.InvokeResult res = QtApplication.invokeDelegate(callback);
+        if (res.invoked)
+            return (ActionMode)res.methodReturns;
+        else
+            return super.onWindowStartingActionMode(callback);
+    }
+    public ActionMode super_onWindowStartingActionMode(Callback callback)
+    {
+        return super.onWindowStartingActionMode(callback);
+    }
+    //---------------------------------------------------------------------------
+//@ANDROID-11
+    //////////////// Activity API 12 /////////////
+
+//@ANDROID-12
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent ev)
+    {
+        if (QtApplication.m_delegateObject != null  && QtApplication.dispatchGenericMotionEvent != null)
+            return (Boolean) QtApplication.invokeDelegateMethod(QtApplication.dispatchGenericMotionEvent, ev);
+        else
+            return super.dispatchGenericMotionEvent(ev);
+    }
+    public boolean super_dispatchGenericMotionEvent(MotionEvent event)
+    {
+        return super.dispatchGenericMotionEvent(event);
+    }
+}
